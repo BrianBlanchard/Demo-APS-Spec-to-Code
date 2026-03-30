@@ -1,0 +1,546 @@
+openapi: 3.0.3
+info:
+  title: Transaction Posting Service API
+  description: |
+    Posts validated transactions to account balances with full atomicity guarantees.
+    Generates sequential transaction IDs, maintains complete transaction history,
+    and publishes events for downstream processing.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: http://localhost:3000
+    description: Docker containerized local server
+  - url: https://api-dev.example.com
+    description: Development environment
+  - url: https://api-staging.example.com
+    description: Staging environment
+  - url: https://api.example.com
+    description: Production environment
+
+tags:
+  - name: Transactions
+    description: Transaction posting operations
+  - name: Health
+    description: Health check endpoints
+
+paths:
+  /api/v1/transactions:
+    post:
+      tags:
+        - Transactions
+      summary: Post a validated transaction
+      description: |
+        Posts a validated transaction to account balances with atomicity guarantees.
+        Generates unique transaction ID, updates account balance, and publishes event.
+      operationId: postTransaction
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: x-trace-id
+          in: header
+          description: Trace ID for request tracking
+          required: false
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostTransactionRequest'
+            examples:
+              debitTransaction:
+                summary: Debit transaction (purchase)
+                value:
+                  validationId: "VAL-20240115-ABC123"
+                  authorizationCode: "AUTH789456"
+                  cardNumber: "4532123456781234"
+                  transactionType: "01"
+                  transactionCategory: "5411"
+                  amount: 125.50
+                  merchantId: "MERCH12345"
+                  merchantName: "AMAZON.COM"
+                  merchantCity: "Seattle"
+                  merchantZip: "98101"
+                  transactionSource: "POS"
+                  transactionDescription: "AMAZON.COM PURCHASE"
+                  originalTimestamp: "2024-01-15T14:30:00Z"
+              creditTransaction:
+                summary: Credit transaction (payment)
+                value:
+                  validationId: "VAL-20240115-XYZ789"
+                  authorizationCode: "AUTH123789"
+                  cardNumber: "4532123456781234"
+                  transactionType: "02"
+                  transactionCategory: "0000"
+                  amount: 500.00
+                  merchantId: "PAYMENT"
+                  merchantName: "ONLINE PAYMENT"
+                  merchantCity: "Online"
+                  merchantZip: "00000"
+                  transactionSource: "WEB"
+                  transactionDescription: "ONLINE PAYMENT"
+                  originalTimestamp: "2024-01-15T15:00:00Z"
+      responses:
+        '201':
+          description: Transaction posted successfully
+          headers:
+            x-trace-id:
+              description: Trace ID for request tracking
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostTransactionResponse'
+              examples:
+                success:
+                  value:
+                    transactionId: "1234567890123456"
+                    accountId: "12345678901"
+                    cardNumber: "************1234"
+                    transactionType: "01"
+                    transactionCategory: "5411"
+                    amount: 125.50
+                    transactionDescription: "AMAZON.COM PURCHASE"
+                    merchantName: "AMAZON.COM"
+                    merchantCity: "Seattle"
+                    originalTimestamp: "2024-01-15T14:30:00Z"
+                    postedTimestamp: "2024-01-15T14:30:05Z"
+                    previousBalance: 2325.25
+                    newBalance: 2450.75
+                    availableCredit: 2549.25
+                    status: "posted"
+        '400':
+          description: Invalid request or validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                validationError:
+                  value:
+                    errorCode: "VALIDATION_ERROR"
+                    message: "Invalid request data"
+                    timestamp: "2024-01-15T14:30:05Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+                authMismatch:
+                  value:
+                    errorCode: "AUTHORIZATION_MISMATCH"
+                    message: "Authorization code does not match validation record"
+                    timestamp: "2024-01-15T14:30:05Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '401':
+          description: Unauthorized - invalid service token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                unauthorized:
+                  value:
+                    errorCode: "UNAUTHORIZED"
+                    message: "Invalid service token"
+                    timestamp: "2024-01-15T14:30:05Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '404':
+          description: Validation record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                notFound:
+                  value:
+                    errorCode: "VALIDATION_NOT_FOUND"
+                    message: "Validation record not found: VAL-20240115-ABC123"
+                    timestamp: "2024-01-15T14:30:05Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '409':
+          description: Conflict - duplicate transaction or account/card status changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                duplicate:
+                  value:
+                    errorCode: "DUPLICATE_TRANSACTION"
+                    message: "Transaction already posted for validation VAL-20240115-ABC123: 1234567890123456"
+                    timestamp: "2024-01-15T14:30:05Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+                accountInactive:
+                  value:
+                    errorCode: "ACCOUNT_INACTIVE"
+                    message: "Account is not active: 12345678901"
+                    timestamp: "2024-01-15T14:30:05Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '422':
+          description: Amount mismatch with validation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                amountMismatch:
+                  value:
+                    errorCode: "AMOUNT_MISMATCH"
+                    message: "Transaction amount does not match validated amount"
+                    timestamp: "2024-01-15T14:30:05Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '500':
+          description: Internal server error - database or system failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                databaseError:
+                  value:
+                    errorCode: "DATABASE_ERROR"
+                    message: "Database operation failed"
+                    timestamp: "2024-01-15T14:30:05Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe
+      description: Checks if the service is ready to accept traffic (database connectivity)
+      operationId: readinessCheck
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: "ready"
+                timestamp: "2024-01-15T14:30:00Z"
+                checks:
+                  database: "up"
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: "not ready"
+                timestamp: "2024-01-15T14:30:00Z"
+                checks:
+                  database: "down"
+                error: "Connection refused"
+
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: Checks if the service is alive
+      operationId: livenessCheck
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LivenessResponse'
+              example:
+                status: "alive"
+                timestamp: "2024-01-15T14:30:00Z"
+
+  /v1/transaction-posting/health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Returns service health status and version
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "healthy"
+                service: "transaction-posting-service"
+                version: "1.0.0"
+                timestamp: "2024-01-15T14:30:00Z"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: Internal service token for authentication
+
+  schemas:
+    PostTransactionRequest:
+      type: object
+      required:
+        - validationId
+        - authorizationCode
+        - cardNumber
+        - transactionType
+        - transactionCategory
+        - amount
+        - merchantId
+        - merchantName
+        - merchantCity
+        - merchantZip
+        - transactionSource
+        - transactionDescription
+        - originalTimestamp
+      properties:
+        validationId:
+          type: string
+          minLength: 1
+          maxLength: 30
+          description: Validation reference from validation service
+          example: "VAL-20240115-ABC123"
+        authorizationCode:
+          type: string
+          minLength: 1
+          maxLength: 20
+          description: Authorization code from validation
+          example: "AUTH789456"
+        cardNumber:
+          type: string
+          pattern: '^\d{16}$'
+          description: 16-digit card number
+          example: "4532123456781234"
+        transactionType:
+          type: string
+          pattern: '^0[1-6]$'
+          description: Transaction type code (01=Debit, 02=Credit, 03-06=Other)
+          enum:
+            - "01"
+            - "02"
+            - "03"
+            - "04"
+            - "05"
+            - "06"
+          example: "01"
+        transactionCategory:
+          type: string
+          pattern: '^\d{4}$'
+          description: Merchant category code (MCC)
+          example: "5411"
+        amount:
+          type: number
+          format: double
+          minimum: 0.01
+          multipleOf: 0.01
+          description: Transaction amount
+          example: 125.50
+        merchantId:
+          type: string
+          minLength: 1
+          maxLength: 10
+          description: Merchant identifier
+          example: "MERCH12345"
+        merchantName:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: Merchant name
+          example: "AMAZON.COM"
+        merchantCity:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: Merchant city
+          example: "Seattle"
+        merchantZip:
+          type: string
+          minLength: 1
+          maxLength: 10
+          description: Merchant ZIP code
+          example: "98101"
+        transactionSource:
+          type: string
+          minLength: 1
+          maxLength: 10
+          description: Source system
+          example: "POS"
+        transactionDescription:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Transaction description
+          example: "AMAZON.COM PURCHASE"
+        originalTimestamp:
+          type: string
+          format: date-time
+          description: Original transaction timestamp
+          example: "2024-01-15T14:30:00Z"
+
+    PostTransactionResponse:
+      type: object
+      properties:
+        transactionId:
+          type: string
+          description: Unique 16-digit transaction ID
+          example: "1234567890123456"
+        accountId:
+          type: string
+          description: Account identifier
+          example: "12345678901"
+        cardNumber:
+          type: string
+          description: Masked card number
+          example: "************1234"
+        transactionType:
+          type: string
+          description: Transaction type code
+          example: "01"
+        transactionCategory:
+          type: string
+          description: Merchant category code
+          example: "5411"
+        amount:
+          type: number
+          format: double
+          description: Transaction amount
+          example: 125.50
+        transactionDescription:
+          type: string
+          description: Transaction description
+          example: "AMAZON.COM PURCHASE"
+        merchantName:
+          type: string
+          description: Merchant name
+          example: "AMAZON.COM"
+        merchantCity:
+          type: string
+          description: Merchant city
+          example: "Seattle"
+        originalTimestamp:
+          type: string
+          format: date-time
+          description: Original transaction timestamp
+          example: "2024-01-15T14:30:00Z"
+        postedTimestamp:
+          type: string
+          format: date-time
+          description: When transaction was posted
+          example: "2024-01-15T14:30:05Z"
+        previousBalance:
+          type: number
+          format: double
+          description: Balance before transaction
+          example: 2325.25
+        newBalance:
+          type: number
+          format: double
+          description: Balance after transaction
+          example: 2450.75
+        availableCredit:
+          type: number
+          format: double
+          description: Remaining available credit
+          example: 2549.25
+        status:
+          type: string
+          enum:
+            - posted
+            - reversed
+            - adjusted
+          description: Transaction status
+          example: "posted"
+
+    ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - message
+        - timestamp
+        - traceId
+      properties:
+        errorCode:
+          type: string
+          description: Error code
+          example: "VALIDATION_ERROR"
+        message:
+          type: string
+          description: Error message
+          example: "Invalid request data"
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp
+          example: "2024-01-15T14:30:05Z"
+        traceId:
+          type: string
+          description: Trace ID for debugging
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+    ReadinessResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - not ready
+          example: "ready"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T14:30:00Z"
+        checks:
+          type: object
+          properties:
+            database:
+              type: string
+              enum:
+                - up
+                - down
+              example: "up"
+        error:
+          type: string
+          description: Error message if not ready
+          example: "Connection refused"
+
+    LivenessResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - alive
+          example: "alive"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T14:30:00Z"
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - healthy
+          example: "healthy"
+        service:
+          type: string
+          example: "transaction-posting-service"
+        version:
+          type: string
+          example: "1.0.0"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T14:30:00Z"

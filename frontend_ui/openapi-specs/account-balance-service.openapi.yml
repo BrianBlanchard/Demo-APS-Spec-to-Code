@@ -1,0 +1,541 @@
+# OpenAPI spec for service account-balance-service
+openapi: 3.0.3
+info:
+  title: Account Balance Service API
+  description: |
+    Real-time account balance management service with atomic transaction processing.
+    Ensures financial accuracy, tracks credit availability, and maintains balance history.
+  version: 1.0.0
+  contact:
+    name: Account Balance Service Team
+    email: support@example.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+  - url: http://localhost:3000
+    description: Docker containerized
+  - url: https://dev-api.example.com
+    description: Development environment
+  - url: https://staging-api.example.com
+    description: Staging environment
+  - url: https://api.example.com
+    description: Production environment
+
+tags:
+  - name: Balance
+    description: Account balance operations
+  - name: Health
+    description: Service health and readiness checks
+
+paths:
+  /api/v1/accounts/{accountId}/balance:
+    get:
+      tags:
+        - Balance
+      summary: Retrieve account balance
+      description: |
+        Retrieves current account balance information including available credit,
+        cycle activity, and transaction history. Data is cached for 30 seconds.
+      operationId: getBalance
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          description: Account identifier (11 digits)
+          schema:
+            type: string
+            pattern: '^\d{11}$'
+            example: "12345678901"
+        - name: x-trace-id
+          in: header
+          required: false
+          description: Request trace ID for distributed tracing
+          schema:
+            type: string
+            format: uuid
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Account balance retrieved successfully
+          headers:
+            x-trace-id:
+              description: Request trace ID
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountBalance'
+              example:
+                accountId: "12345678901"
+                currentBalance: 2450.75
+                creditLimit: 5000.00
+                availableCredit: 2549.25
+                cashCreditLimit: 1500.00
+                availableCashCredit: 800.00
+                currentCycleCredit: 350.00
+                currentCycleDebit: 2800.75
+                cycleStartDate: "2024-01-01"
+                cycleEndDate: "2024-01-31"
+                lastTransactionDate: "2024-01-15T14:30:00Z"
+                lastUpdatedAt: "2024-01-15T14:30:15Z"
+        '400':
+          description: Invalid account ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "VALIDATION_ERROR"
+                message: "Account ID must be exactly 11 digits"
+                timestamp: "2024-01-15T14:30:15Z"
+                traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '401':
+          description: Unauthorized - invalid or missing JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "UNAUTHORIZED"
+                message: "Invalid or expired token"
+                timestamp: "2024-01-15T14:30:15Z"
+                traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "NOT_FOUND"
+                message: "Account 12345678901 not found"
+                timestamp: "2024-01-15T14:30:15Z"
+                traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/accounts/{accountId}/balance/update:
+    post:
+      tags:
+        - Balance
+      summary: Update account balance (Internal)
+      description: |
+        Updates account balance atomically during transaction processing.
+        Validates sufficient credit, maintains cycle totals, and publishes events.
+        **Internal service endpoint - requires service token.**
+      operationId: updateBalance
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          description: Account identifier (11 digits)
+          schema:
+            type: string
+            pattern: '^\d{11}$'
+            example: "12345678901"
+        - name: x-service-token
+          in: header
+          required: true
+          description: Internal service authentication token
+          schema:
+            type: string
+        - name: x-trace-id
+          in: header
+          required: false
+          description: Request trace ID for distributed tracing
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BalanceUpdateRequest'
+            example:
+              transactionId: "1234567890123456"
+              transactionType: "purchase"
+              amount: 125.50
+              isDebit: true
+              timestamp: "2024-01-15T14:30:00Z"
+      responses:
+        '200':
+          description: Balance updated successfully
+          headers:
+            x-trace-id:
+              description: Request trace ID
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalanceUpdateResponse'
+              example:
+                accountId: "12345678901"
+                previousBalance: 2325.25
+                newBalance: 2450.75
+                transactionId: "1234567890123456"
+                availableCredit: 2549.25
+                updatedAt: "2024-01-15T14:30:15Z"
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "VALIDATION_ERROR"
+                message: "Amount must be positive"
+                timestamp: "2024-01-15T14:30:15Z"
+                traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '401':
+          description: Unauthorized - invalid service token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Insufficient credit for transaction
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "CONFLICT"
+                message: "Insufficient credit. Available: $2549.25, Requested: $3000.00"
+                timestamp: "2024-01-15T14:30:15Z"
+                traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '423':
+          description: Account locked by another process
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying
+              schema:
+                type: integer
+                example: 5
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "RESOURCE_LOCKED"
+                message: "Resource is locked"
+                timestamp: "2024-01-15T14:30:15Z"
+                traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '500':
+          description: Database error or system failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Basic health status of the service
+      operationId: health
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  timestamp:
+                    type: string
+                    format: date-time
+                  service:
+                    type: string
+                    example: "account-balance-service"
+
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: Kubernetes liveness probe endpoint
+      operationId: liveness
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "alive"
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe
+      description: |
+        Kubernetes readiness probe - checks database and Redis connectivity
+      operationId: readiness
+      responses:
+        '200':
+          description: Service is ready to accept traffic
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ready"
+                  checks:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                        example: "ready"
+                      redis:
+                        type: string
+                        example: "ready"
+                  timestamp:
+                    type: string
+                    format: date-time
+        '503':
+          description: Service not ready - dependencies unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "not ready"
+                  checks:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                        example: "not ready"
+                      redis:
+                        type: string
+                        example: "ready"
+                  timestamp:
+                    type: string
+                    format: date-time
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for user authentication
+
+  schemas:
+    AccountBalance:
+      type: object
+      required:
+        - accountId
+        - currentBalance
+        - creditLimit
+        - availableCredit
+        - cashCreditLimit
+        - availableCashCredit
+        - currentCycleCredit
+        - currentCycleDebit
+        - cycleStartDate
+        - cycleEndDate
+        - lastTransactionDate
+        - lastUpdatedAt
+      properties:
+        accountId:
+          type: string
+          pattern: '^\d{11}$'
+          description: Account identifier (11 digits)
+          example: "12345678901"
+        currentBalance:
+          type: number
+          format: double
+          description: Current outstanding balance
+          example: 2450.75
+        creditLimit:
+          type: number
+          format: double
+          description: Total credit limit
+          example: 5000.00
+        availableCredit:
+          type: number
+          format: double
+          description: Remaining available credit
+          example: 2549.25
+        cashCreditLimit:
+          type: number
+          format: double
+          description: Cash advance limit
+          example: 1500.00
+        availableCashCredit:
+          type: number
+          format: double
+          description: Available cash credit
+          example: 800.00
+        currentCycleCredit:
+          type: number
+          format: double
+          description: Credits this billing cycle
+          example: 350.00
+        currentCycleDebit:
+          type: number
+          format: double
+          description: Debits this billing cycle
+          example: 2800.75
+        cycleStartDate:
+          type: string
+          format: date
+          description: Billing cycle start date
+          example: "2024-01-01"
+        cycleEndDate:
+          type: string
+          format: date
+          description: Billing cycle end date
+          example: "2024-01-31"
+        lastTransactionDate:
+          type: string
+          format: date-time
+          description: Last transaction timestamp
+          example: "2024-01-15T14:30:00Z"
+        lastUpdatedAt:
+          type: string
+          format: date-time
+          description: Last balance update timestamp
+          example: "2024-01-15T14:30:15Z"
+
+    BalanceUpdateRequest:
+      type: object
+      required:
+        - transactionId
+        - transactionType
+        - amount
+        - isDebit
+        - timestamp
+      properties:
+        transactionId:
+          type: string
+          minLength: 16
+          maxLength: 16
+          description: Unique transaction identifier (16 characters)
+          example: "1234567890123456"
+        transactionType:
+          type: string
+          enum:
+            - purchase
+            - payment
+            - cash_advance
+            - refund
+            - fee
+            - interest
+          description: Type of transaction
+          example: "purchase"
+        amount:
+          type: number
+          format: double
+          minimum: 0.01
+          description: Transaction amount (must be positive)
+          example: 125.50
+        isDebit:
+          type: boolean
+          description: True for debit (increase balance), false for credit (decrease balance)
+          example: true
+        timestamp:
+          type: string
+          format: date-time
+          description: Transaction timestamp
+          example: "2024-01-15T14:30:00Z"
+
+    BalanceUpdateResponse:
+      type: object
+      required:
+        - accountId
+        - previousBalance
+        - newBalance
+        - transactionId
+        - availableCredit
+        - updatedAt
+      properties:
+        accountId:
+          type: string
+          pattern: '^\d{11}$'
+          description: Account identifier
+          example: "12345678901"
+        previousBalance:
+          type: number
+          format: double
+          description: Balance before update
+          example: 2325.25
+        newBalance:
+          type: number
+          format: double
+          description: Balance after update
+          example: 2450.75
+        transactionId:
+          type: string
+          description: Transaction that caused the update
+          example: "1234567890123456"
+        availableCredit:
+          type: number
+          format: double
+          description: Updated available credit
+          example: 2549.25
+        updatedAt:
+          type: string
+          format: date-time
+          description: Update timestamp
+          example: "2024-01-15T14:30:15Z"
+
+    ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - message
+        - timestamp
+        - traceId
+      properties:
+        errorCode:
+          type: string
+          description: Machine-readable error code
+          example: "VALIDATION_ERROR"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Account ID must be exactly 11 digits"
+        timestamp:
+          type: string
+          format: date-time
+          description: Error occurrence timestamp
+          example: "2024-01-15T14:30:15Z"
+        traceId:
+          type: string
+          format: uuid
+          description: Request trace ID for debugging
+          example: "550e8400-e29b-41d4-a716-446655440000"

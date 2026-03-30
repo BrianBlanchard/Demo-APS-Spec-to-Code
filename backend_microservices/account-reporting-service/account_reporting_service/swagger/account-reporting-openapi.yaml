@@ -1,0 +1,418 @@
+openapi: 3.0.3
+info:
+  title: Account Reporting Service API
+  description: |
+    Account Reporting Service generates account-level reports including account status summaries,
+    credit utilization analysis, delinquency reports for collections, and monthly customer statements.
+    Supports regulatory reporting and portfolio management analysis.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: http://localhost:3000
+    description: Docker containerized environment
+  - url: https://api-dev.example.com
+    description: Development environment
+  - url: https://api-staging.example.com
+    description: Staging environment
+  - url: https://api.example.com
+    description: Production environment
+
+tags:
+  - name: Reports
+    description: Account report generation endpoints
+  - name: Health
+    description: Service health check endpoints
+
+paths:
+  /api/v1/reports/accounts:
+    post:
+      tags:
+        - Reports
+      summary: Generate account report
+      description: |
+        Generates account-level reports including account status distribution, credit utilization,
+        delinquency analysis, and monthly statements based on the specified report type and date.
+      operationId: generateAccountReport
+      parameters:
+        - $ref: '#/components/parameters/TraceIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateReportRequest'
+            examples:
+              accountStatus:
+                summary: Account Status Report
+                value:
+                  reportType: account_status
+                  asOfDate: "2024-01-31"
+                  format: csv
+              creditUtilization:
+                summary: Credit Utilization Report
+                value:
+                  reportType: credit_utilization
+                  asOfDate: "2024-01-31"
+                  format: json
+              delinquency:
+                summary: Delinquency Report
+                value:
+                  reportType: delinquency
+                  asOfDate: "2024-01-31"
+                  format: pdf
+      responses:
+        '200':
+          description: Report generated successfully
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/TraceId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateReportResponse'
+              examples:
+                success:
+                  summary: Successful report generation
+                  value:
+                    reportId: RPT-20240131-XYZ789
+                    reportType: account_status
+                    totalAccounts: 10543
+                    activeAccounts: 9821
+                    suspendedAccounts: 432
+                    closedAccounts: 290
+                    downloadUrl: https://reports.example.com/RPT-20240131-XYZ789.csv
+        '400':
+          description: Invalid request parameters
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/TraceId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidDate:
+                  summary: Invalid date format
+                  value:
+                    errorCode: VALIDATION_ERROR
+                    message: "asOfDate: Date must be in YYYY-MM-DD format"
+                    timestamp: "2024-01-31T10:30:00.000Z"
+                    traceId: a1b2c3d4e5f6g7h8
+                futureDate:
+                  summary: Future date not allowed
+                  value:
+                    errorCode: VALIDATION_ERROR
+                    message: "Date cannot be in the future"
+                    timestamp: "2024-01-31T10:30:00.000Z"
+                    traceId: a1b2c3d4e5f6g7h8
+        '500':
+          description: Internal server error
+          headers:
+            X-Trace-Id:
+              $ref: '#/components/headers/TraceId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                reportGenerationError:
+                  summary: Report generation failed
+                  value:
+                    errorCode: REPORT_GENERATION_ERROR
+                    message: "Failed to generate report"
+                    timestamp: "2024-01-31T10:30:00.000Z"
+                    traceId: a1b2c3d4e5f6g7h8
+                databaseError:
+                  summary: Database error
+                  value:
+                    errorCode: DATABASE_ERROR
+                    message: "Failed to fetch account summary from database"
+                    timestamp: "2024-01-31T10:30:00.000Z"
+                    traceId: a1b2c3d4e5f6g7h8
+
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: Checks if the service is alive and responding
+      operationId: checkLiveness
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LivenessResponse'
+              example:
+                status: UP
+                timestamp: "2024-01-31T10:30:00.000Z"
+
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe
+      description: Checks if the service is ready to accept traffic (includes database connectivity)
+      operationId: checkReadiness
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: UP
+                timestamp: "2024-01-31T10:30:00.000Z"
+                checks:
+                  database: UP
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: DOWN
+                timestamp: "2024-01-31T10:30:00.000Z"
+                checks:
+                  database: DOWN
+
+  /v1/account-reporting-service/health:
+    get:
+      tags:
+        - Health
+      summary: Service health check
+      description: Returns detailed health information about the service
+      operationId: checkHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: healthy
+                timestamp: "2024-01-31T10:30:00.000Z"
+                service: account-reporting-service
+                version: "1.0.0"
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: unhealthy
+                timestamp: "2024-01-31T10:30:00.000Z"
+                service: account-reporting-service
+                version: "1.0.0"
+
+components:
+  parameters:
+    TraceIdHeader:
+      name: X-Trace-Id
+      in: header
+      description: Optional trace ID for request tracking. If not provided, one will be generated.
+      required: false
+      schema:
+        type: string
+        example: a1b2c3d4e5f6g7h8
+
+  headers:
+    TraceId:
+      description: Trace ID for request tracking
+      schema:
+        type: string
+        example: a1b2c3d4e5f6g7h8
+
+  schemas:
+    GenerateReportRequest:
+      type: object
+      required:
+        - reportType
+        - asOfDate
+        - format
+      properties:
+        reportType:
+          type: string
+          enum:
+            - account_status
+            - credit_utilization
+            - delinquency
+            - monthly_statement
+          description: Type of report to generate
+          example: account_status
+        asOfDate:
+          type: string
+          format: date
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          description: Report date in YYYY-MM-DD format (cannot be in the future)
+          example: "2024-01-31"
+        format:
+          type: string
+          enum:
+            - csv
+            - json
+            - pdf
+          description: Output format of the report
+          example: csv
+
+    GenerateReportResponse:
+      type: object
+      required:
+        - reportId
+        - reportType
+        - totalAccounts
+        - activeAccounts
+        - suspendedAccounts
+        - closedAccounts
+        - downloadUrl
+      properties:
+        reportId:
+          type: string
+          description: Unique identifier for the generated report
+          example: RPT-20240131-XYZ789
+        reportType:
+          type: string
+          description: Type of report generated
+          example: account_status
+        totalAccounts:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Total number of accounts in the report
+          example: 10543
+        activeAccounts:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Number of active accounts
+          example: 9821
+        suspendedAccounts:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Number of suspended accounts
+          example: 432
+        closedAccounts:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Number of closed accounts
+          example: 290
+        downloadUrl:
+          type: string
+          format: uri
+          description: URL to download the generated report
+          example: https://reports.example.com/RPT-20240131-XYZ789.csv
+
+    ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - message
+        - timestamp
+        - traceId
+      properties:
+        errorCode:
+          type: string
+          description: Machine-readable error code
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Date must be in YYYY-MM-DD format"
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when the error occurred
+          example: "2024-01-31T10:30:00.000Z"
+        traceId:
+          type: string
+          description: Trace ID for debugging and log correlation
+          example: a1b2c3d4e5f6g7h8
+
+    LivenessResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum:
+            - UP
+          description: Liveness status
+          example: UP
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of the check
+          example: "2024-01-31T10:30:00.000Z"
+
+    ReadinessResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - checks
+      properties:
+        status:
+          type: string
+          enum:
+            - UP
+            - DOWN
+          description: Overall readiness status
+          example: UP
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of the check
+          example: "2024-01-31T10:30:00.000Z"
+        checks:
+          type: object
+          properties:
+            database:
+              type: string
+              enum:
+                - UP
+                - DOWN
+              description: Database connectivity status
+              example: UP
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - service
+        - version
+      properties:
+        status:
+          type: string
+          enum:
+            - healthy
+            - unhealthy
+          description: Overall health status
+          example: healthy
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of the check
+          example: "2024-01-31T10:30:00.000Z"
+        service:
+          type: string
+          description: Service name
+          example: account-reporting-service
+        version:
+          type: string
+          description: Service version
+          example: "1.0.0"

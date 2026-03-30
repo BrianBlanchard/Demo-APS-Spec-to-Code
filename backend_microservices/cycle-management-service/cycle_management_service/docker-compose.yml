@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: billing-cycle-service
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=billing_cycle_db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_POOL_MIN=2
+      - DB_POOL_MAX=10
+      - LOG_LEVEL=info
+      - LOG_PRETTY=false
+      - CORS_ORIGIN=*
+      - SERVICE_NAME=billing-cycle-management-service
+      - SERVICE_VERSION=1.0.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - billing-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health/live', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: billing-cycle-postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=billing_cycle_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - billing-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  billing-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+    driver: local

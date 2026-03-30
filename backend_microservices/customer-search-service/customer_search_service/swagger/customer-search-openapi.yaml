@@ -1,0 +1,541 @@
+openapi: 3.0.3
+
+info:
+  title: Customer Search Service API
+  version: 1.0.0
+  description: |
+    Customer Search Service enables store associates to quickly search and locate customer profiles
+    using partial name, phone, email, or loyalty card number. Supports fuzzy matching for typos
+    and partial information with sub-2-second response time SLA.
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+  - url: http://localhost:3000
+    description: Docker containerized
+  - url: https://dev-api.example.com
+    description: Development environment
+  - url: https://staging-api.example.com
+    description: Staging environment
+  - url: https://api.example.com
+    description: Production environment
+
+tags:
+  - name: Customer Search
+    description: Customer search operations
+  - name: Health
+    description: Health check endpoints
+
+paths:
+  /api/v1/customers/search:
+    get:
+      tags:
+        - Customer Search
+      summary: Search customer profiles
+      description: |
+        Search for customer profiles using various criteria. Supports fuzzy matching
+        for typos and partial input. Results are ranked by relevance and recency.
+      operationId: searchCustomers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: x-trace-id
+          in: header
+          description: Unique trace ID for request tracking
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: x-user-id
+          in: header
+          description: User ID of the associate performing the search
+          required: true
+          schema:
+            type: string
+        - name: x-user-role
+          in: header
+          description: Role of the user (must be associate or higher)
+          required: true
+          schema:
+            type: string
+            enum: [associate, manager, admin]
+        - name: query
+          in: query
+          description: Search query text (minimum 2 characters)
+          required: true
+          schema:
+            type: string
+            minLength: 2
+          example: john smith
+        - name: search_fields
+          in: query
+          description: Comma-separated list of fields to search
+          required: false
+          schema:
+            type: string
+          example: name,email
+        - name: loyalty_tier
+          in: query
+          description: Comma-separated list of loyalty tiers to filter by
+          required: false
+          schema:
+            type: string
+          example: vip,gold
+        - name: store_id
+          in: query
+          description: Store ID to filter customers by last visit
+          required: false
+          schema:
+            type: string
+          example: store-123
+        - name: limit
+          in: query
+          description: Maximum number of results to return (1-50)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+        - name: offset
+          in: query
+          description: Pagination offset
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Successful search response
+          headers:
+            x-trace-id:
+              description: Trace ID for request tracking
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+              examples:
+                successful:
+                  summary: Successful search with results
+                  value:
+                    total_results: 2
+                    results:
+                      - profile_id: 550e8400-e29b-41d4-a716-446655440001
+                        first_name: John
+                        last_name: Smith
+                        email: john.smith@example.com
+                        phone: '+14155551234'
+                        loyalty_card: PGA12345678
+                        loyalty_tier: vip
+                        last_activity: '2026-03-25T18:45:00Z'
+                        last_visit_store: store-123
+                        match_score: 98.5
+                        highlights:
+                          name: <em>John Smith</em>
+                      - profile_id: 550e8400-e29b-41d4-a716-446655440002
+                        first_name: Jon
+                        last_name: Smythe
+                        email: jon.smythe@example.com
+                        phone: '+14155559999'
+                        loyalty_card: PGA87654321
+                        loyalty_tier: silver
+                        last_activity: '2026-03-20T12:30:00Z'
+                        last_visit_store: store-123
+                        match_score: 75.2
+                        highlights:
+                          name: <em>Jon Smythe</em>
+                    query_time_ms: 145
+                    pagination:
+                      limit: 10
+                      offset: 0
+                      has_more: false
+                zero_results:
+                  summary: Search with no results
+                  value:
+                    total_results: 0
+                    results: []
+                    query_time_ms: 98
+                    pagination:
+                      limit: 10
+                      offset: 0
+                      has_more: false
+        '400':
+          description: Bad request - validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: VALIDATION_ERROR
+                message: 'query: Query must be at least 2 characters'
+                timestamp: '2026-03-27T10:00:00Z'
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+        '401':
+          description: Unauthorized - invalid or missing JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: UNAUTHORIZED
+                message: Missing or invalid authorization header
+                timestamp: '2026-03-27T10:00:00Z'
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+        '403':
+          description: Forbidden - insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: FORBIDDEN
+                message: Insufficient permissions
+                timestamp: '2026-03-27T10:00:00Z'
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+        '422':
+          description: Unprocessable entity - invalid search fields or filters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: UNPROCESSABLE_ENTITY
+                message: Invalid search_fields value
+                timestamp: '2026-03-27T10:00:00Z'
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: RATE_LIMIT_EXCEEDED
+                message: Rate limit exceeded
+                timestamp: '2026-03-27T10:00:00Z'
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: INTERNAL_SERVER_ERROR
+                message: An unexpected error occurred
+                timestamp: '2026-03-27T10:00:00Z'
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+        '503':
+          description: Service unavailable - Elasticsearch and fallback failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: SERVICE_UNAVAILABLE
+                message: Search service temporarily unavailable
+                timestamp: '2026-03-27T10:00:00Z'
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Basic health check
+      description: Returns basic health status of the service
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+                timestamp: '2026-03-27T10:00:00Z'
+
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe
+      description: Checks if service is ready to accept traffic (all dependencies available)
+      operationId: readinessCheck
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: ready
+                checks:
+                  database: true
+                  elasticsearch: true
+                  redis: true
+                timestamp: '2026-03-27T10:00:00Z'
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: not ready
+                checks:
+                  database: true
+                  elasticsearch: false
+                  redis: true
+                timestamp: '2026-03-27T10:00:00Z'
+
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: Checks if service is alive and responding
+      operationId: livenessCheck
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: alive
+                timestamp: '2026-03-27T10:00:00Z'
+
+  /v1/customer-search-service/health:
+    get:
+      tags:
+        - Health
+      summary: Versioned health check
+      description: Health check endpoint with versioned path
+      operationId: versionedHealthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for authentication
+
+  schemas:
+    SearchResponse:
+      type: object
+      required:
+        - total_results
+        - results
+        - query_time_ms
+        - pagination
+      properties:
+        total_results:
+          type: integer
+          minimum: 0
+          description: Total number of matching customer profiles
+          example: 3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchResult'
+          description: Array of search results
+        query_time_ms:
+          type: integer
+          minimum: 0
+          description: Search execution time in milliseconds
+          example: 145
+        pagination:
+          $ref: '#/components/schemas/PaginationMetadata'
+
+    SearchResult:
+      type: object
+      required:
+        - profile_id
+        - first_name
+        - last_name
+        - email
+        - phone
+        - loyalty_card
+        - loyalty_tier
+        - last_activity
+        - last_visit_store
+        - match_score
+        - highlights
+      properties:
+        profile_id:
+          type: string
+          format: uuid
+          description: Unique customer profile identifier
+          example: 550e8400-e29b-41d4-a716-446655440001
+        first_name:
+          type: string
+          description: Customer first name
+          example: John
+        last_name:
+          type: string
+          description: Customer last name
+          example: Smith
+        email:
+          type: string
+          format: email
+          description: Customer email address
+          example: john.smith@example.com
+        phone:
+          type: string
+          description: Customer phone number (E.164 format)
+          example: '+14155551234'
+        loyalty_card:
+          type: string
+          description: Loyalty card number
+          example: PGA12345678
+        loyalty_tier:
+          type: string
+          enum: [vip, gold, silver]
+          description: Customer loyalty tier
+          example: vip
+        last_activity:
+          type: string
+          format: date-time
+          description: Timestamp of last customer activity
+          example: '2026-03-25T18:45:00Z'
+        last_visit_store:
+          type: string
+          description: ID of store last visited by customer
+          example: store-123
+        match_score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          description: Relevance score (0-100)
+          example: 98.5
+        highlights:
+          type: object
+          description: Highlighted search term matches
+          properties:
+            name:
+              type: string
+              example: <em>John Smith</em>
+            email:
+              type: string
+              example: <em>john.smith</em>@example.com
+            phone:
+              type: string
+              example: <em>+1415555</em>1234
+            loyalty_card:
+              type: string
+              example: <em>PGA12345</em>678
+
+    PaginationMetadata:
+      type: object
+      required:
+        - limit
+        - offset
+        - has_more
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+          description: Maximum results per page
+          example: 10
+        offset:
+          type: integer
+          minimum: 0
+          description: Current pagination offset
+          example: 0
+        has_more:
+          type: boolean
+          description: Whether more results are available
+          example: false
+
+    ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - message
+        - timestamp
+        - traceId
+      properties:
+        errorCode:
+          type: string
+          description: Error code identifier
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          description: Human-readable error message
+          example: Query must be at least 2 characters
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp when error occurred
+          example: '2026-03-27T10:00:00Z'
+        traceId:
+          type: string
+          description: Unique trace ID for debugging
+          example: 550e8400-e29b-41d4-a716-446655440000
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          description: Health status
+          example: ok
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of health check
+          example: '2026-03-27T10:00:00Z'
+
+    ReadinessResponse:
+      type: object
+      required:
+        - status
+        - checks
+        - timestamp
+      properties:
+        status:
+          type: string
+          description: Readiness status
+          example: ready
+        checks:
+          type: object
+          properties:
+            database:
+              type: boolean
+              description: PostgreSQL database status
+              example: true
+            elasticsearch:
+              type: boolean
+              description: Elasticsearch cluster status
+              example: true
+            redis:
+              type: boolean
+              description: Redis cache status
+              example: true
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of readiness check
+          example: '2026-03-27T10:00:00Z'

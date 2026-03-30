@@ -1,0 +1,497 @@
+# OpenAPI spec for service account-creation-service
+openapi: 3.0.3
+info:
+  title: Account Creation Service API
+  description: |
+    Account creation service for customer account management.
+    This service orchestrates the complete account creation workflow, serving as the critical gateway
+    for establishing new customer accounts with KYC verification, credit limit initialization,
+    and comprehensive audit trail.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Local development server
+  - url: http://localhost:3000/api/v1
+    description: Docker containerized environment
+  - url: https://dev.example.com/api/v1
+    description: Development environment
+  - url: https://staging.example.com/api/v1
+    description: Staging environment
+  - url: https://api.example.com/api/v1
+    description: Production environment
+
+paths:
+  /accounts:
+    post:
+      operationId: createAccount
+      summary: Create new account
+      description: |
+        Creates a new account for a verified customer. This endpoint:
+        - Validates customer exists and KYC status = VERIFIED (NFR-006)
+        - Generates unique 11-digit account identifier
+        - Initializes credit and cash advance limits with validation (BR-009)
+        - Sets opening and expiration dates per account type policy
+        - Creates comprehensive audit trail
+
+        **Business Rules:**
+        - Cash advance limit must not exceed credit limit (BR-009)
+        - Customer KYC status must be VERIFIED
+        - Response time < 500ms (NFR-001)
+      tags:
+        - Accounts
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAccountRequest'
+            examples:
+              standardCredit:
+                summary: Standard credit account
+                value:
+                  customerId: "CUS-2026-000123"
+                  accountType: "STANDARD_CREDIT"
+                  creditLimit: 5000.00
+                  cashAdvanceLimit: 1000.00
+                  disclosureGroupCode: "DG-STANDARD"
+              premiumCredit:
+                summary: Premium credit account
+                value:
+                  customerId: "CUS-2026-000125"
+                  accountType: "PREMIUM_CREDIT"
+                  creditLimit: 15000.00
+                  cashAdvanceLimit: 3000.00
+                  disclosureGroupCode: "DG-PREMIUM"
+      responses:
+        '201':
+          description: Account created successfully
+          headers:
+            Location:
+              description: URI of the created account resource
+              schema:
+                type: string
+                example: /api/v1/accounts/12345678901
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountResponse'
+              example:
+                id: 98765
+                accountId: "12345678901"
+                customerId: "CUS-2026-000123"
+                status: "NEW"
+                accountType: "STANDARD_CREDIT"
+                creditLimit: 5000.00
+                cashAdvanceLimit: 1000.00
+                currentBalance: 0.00
+                availableCredit: 5000.00
+                openingDate: "2026-03-16"
+                expirationDate: "2029-03-16"
+                disclosureGroupCode: "DG-STANDARD"
+                createdAt: "2026-03-16T11:00:00Z"
+                updatedAt: "2026-03-16T11:00:00Z"
+        '400':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+              example:
+                status: 400
+                error: "Validation Failed"
+                timestamp: "2026-03-16T11:00:00Z"
+                traceId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                errors:
+                  - field: "cashAdvanceLimit"
+                    message: "Cash advance limit cannot exceed credit limit (BR-009)"
+                  - field: "creditLimit"
+                    message: "Credit limit must be positive"
+        '401':
+          description: Unauthorized - Missing or invalid JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: 401
+                error: "Unauthorized"
+                message: "Missing or invalid authentication token"
+                timestamp: "2026-03-16T11:00:00Z"
+                traceId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        '403':
+          description: Forbidden - User lacks Operator role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: 403
+                error: "Forbidden"
+                message: "User lacks required Operator role"
+                timestamp: "2026-03-16T11:00:00Z"
+                traceId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFoundErrorResponse'
+              example:
+                status: 404
+                error: "Customer not found"
+                customerId: "CUS-2026-999999"
+                timestamp: "2026-03-16T11:00:00Z"
+                traceId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        '422':
+          description: Unprocessable Entity - KYC verification required or disclosure group not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnprocessableEntityErrorResponse'
+              examples:
+                kycNotVerified:
+                  summary: KYC verification not complete
+                  value:
+                    status: 422
+                    error: "Customer KYC verification required"
+                    customerId: "CUS-2026-000124"
+                    kycStatus: "PENDING"
+                    message: "Account creation requires KYC status = VERIFIED per regulatory requirements (NFR-006)"
+                    timestamp: "2026-03-16T11:00:00Z"
+                    traceId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                disclosureGroupNotFound:
+                  summary: Disclosure group not found
+                  value:
+                    status: 422
+                    error: "Disclosure group not found"
+                    disclosureGroupCode: "DG-INVALID"
+                    timestamp: "2026-03-16T11:00:00Z"
+                    traceId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        '500':
+          description: Internal server error - Database failure or transaction rollback
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status: 500
+                error: "Internal Server Error"
+                message: "An unexpected error occurred"
+                timestamp: "2026-03-16T11:00:00Z"
+                traceId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+  /health/live:
+    get:
+      operationId: healthLiveness
+      summary: Liveness probe
+      description: Checks if the service is alive and running
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+              example:
+                status: "healthy"
+                timestamp: "2026-03-16T11:00:00Z"
+                uptime: 3600.5
+
+  /health/ready:
+    get:
+      operationId: healthReadiness
+      summary: Readiness probe
+      description: Checks if the service is ready to accept traffic (includes database connectivity check)
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+              example:
+                status: "healthy"
+                timestamp: "2026-03-16T11:00:00Z"
+                uptime: 3600.5
+                database: "connected"
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+              example:
+                status: "unhealthy"
+                timestamp: "2026-03-16T11:00:00Z"
+                uptime: 3600.5
+                database: "disconnected"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT Bearer token authentication (Operator+ role required)
+
+  schemas:
+    CreateAccountRequest:
+      type: object
+      required:
+        - customerId
+        - accountType
+        - creditLimit
+        - cashAdvanceLimit
+        - disclosureGroupCode
+      properties:
+        customerId:
+          type: string
+          description: Customer business identifier
+          example: "CUS-2026-000123"
+          minLength: 1
+        accountType:
+          type: string
+          description: Account type code
+          enum:
+            - STANDARD_CREDIT
+            - PREMIUM_CREDIT
+            - PROMOTIONAL_6MONTH
+          example: "STANDARD_CREDIT"
+        creditLimit:
+          type: number
+          format: double
+          description: Initial credit limit (ACRDLIM)
+          example: 5000.00
+          minimum: 0.01
+        cashAdvanceLimit:
+          type: number
+          format: double
+          description: Initial cash advance limit (ACSHLIM)
+          example: 1000.00
+          minimum: 0.01
+        disclosureGroupCode:
+          type: string
+          description: Disclosure group for interest rates
+          example: "DG-STANDARD"
+          minLength: 1
+
+    AccountResponse:
+      type: object
+      required:
+        - id
+        - accountId
+        - customerId
+        - status
+        - accountType
+        - creditLimit
+        - cashAdvanceLimit
+        - currentBalance
+        - availableCredit
+        - openingDate
+        - expirationDate
+        - disclosureGroupCode
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Internal surrogate key
+          example: 98765
+        accountId:
+          type: string
+          description: Unique 11-digit account identifier
+          example: "12345678901"
+          pattern: '^\d{11}$'
+        customerId:
+          type: string
+          description: Owning customer identifier
+          example: "CUS-2026-000123"
+        status:
+          type: string
+          description: Account status
+          enum:
+            - NEW
+            - ACTIVE
+            - CLOSED
+          example: "NEW"
+        accountType:
+          type: string
+          description: Account type code
+          enum:
+            - STANDARD_CREDIT
+            - PREMIUM_CREDIT
+            - PROMOTIONAL_6MONTH
+          example: "STANDARD_CREDIT"
+        creditLimit:
+          type: number
+          format: double
+          description: Credit limit (ACRDLIM)
+          example: 5000.00
+        cashAdvanceLimit:
+          type: number
+          format: double
+          description: Cash advance limit (ACSHLIM)
+          example: 1000.00
+        currentBalance:
+          type: number
+          format: double
+          description: Current balance
+          example: 0.00
+        availableCredit:
+          type: number
+          format: double
+          description: Available credit (creditLimit - currentBalance)
+          example: 5000.00
+        openingDate:
+          type: string
+          format: date
+          description: Account opening date
+          example: "2026-03-16"
+        expirationDate:
+          type: string
+          format: date
+          description: Account expiration date
+          example: "2029-03-16"
+        disclosureGroupCode:
+          type: string
+          description: Disclosure group code
+          example: "DG-STANDARD"
+        createdAt:
+          type: string
+          format: date-time
+          description: Record creation timestamp
+          example: "2026-03-16T11:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last modification timestamp
+          example: "2026-03-16T11:00:00Z"
+
+    ErrorResponse:
+      type: object
+      required:
+        - status
+        - error
+        - timestamp
+      properties:
+        status:
+          type: integer
+          description: HTTP status code
+          example: 500
+        error:
+          type: string
+          description: Error type
+          example: "Internal Server Error"
+        message:
+          type: string
+          description: Error message
+          example: "An unexpected error occurred"
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp
+          example: "2026-03-16T11:00:00Z"
+        traceId:
+          type: string
+          description: Request trace ID for debugging
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+    ValidationErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            errors:
+              type: array
+              description: Field-level validation errors
+              items:
+                type: object
+                required:
+                  - field
+                  - message
+                properties:
+                  field:
+                    type: string
+                    description: Field name
+                    example: "cashAdvanceLimit"
+                  message:
+                    type: string
+                    description: Validation error message
+                    example: "Cash advance limit cannot exceed credit limit (BR-009)"
+
+    NotFoundErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            customerId:
+              type: string
+              description: Customer identifier that was not found
+              example: "CUS-2026-999999"
+
+    UnprocessableEntityErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            customerId:
+              type: string
+              description: Customer identifier
+              example: "CUS-2026-000124"
+            kycStatus:
+              type: string
+              description: Current KYC status
+              example: "PENDING"
+            disclosureGroupCode:
+              type: string
+              description: Disclosure group code that was not found
+              example: "DG-INVALID"
+
+    HealthCheckResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - uptime
+      properties:
+        status:
+          type: string
+          description: Health status
+          enum:
+            - healthy
+            - unhealthy
+          example: "healthy"
+        timestamp:
+          type: string
+          format: date-time
+          description: Check timestamp
+          example: "2026-03-16T11:00:00Z"
+        uptime:
+          type: number
+          format: double
+          description: Service uptime in seconds
+          example: 3600.5
+        database:
+          type: string
+          description: Database connection status
+          enum:
+            - connected
+            - disconnected
+          example: "connected"
+
+tags:
+  - name: Accounts
+    description: Account creation and management operations
+  - name: Health
+    description: Health check and monitoring endpoints

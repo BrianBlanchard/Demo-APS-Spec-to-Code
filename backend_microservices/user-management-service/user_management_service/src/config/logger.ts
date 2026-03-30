@@ -1,0 +1,26 @@
+import pino from 'pino';
+import { config } from './config';
+
+export const logger = pino({
+  level: config.logging.level,
+  ...(config.logging.pretty
+    ? {
+        transport: {
+          target: 'pino-pretty',
+          options: {
+            colorize: true,
+            translateTime: 'SYS:standard',
+            ignore: 'pid,hostname',
+          },
+        },
+      }
+    : {}),
+  base: {
+    service: config.serviceName,
+  },
+  formatters: {
+    level: (label) => {
+      return { level: label };
+    },
+  },
+});

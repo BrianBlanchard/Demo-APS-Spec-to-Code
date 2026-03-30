@@ -1,0 +1,748 @@
+openapi: 3.0.3
+info:
+  title: Customer Identity Verification Service
+  version: 1.0.0
+  description: |
+    Automated identity verification and fraud detection service for customer onboarding and profile updates.
+    Integrates with external credit bureaus, government ID verification services, and fraud detection systems
+    to ensure customer authenticity and compliance with KYC (Know Your Customer) regulations.
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Local development server
+  - url: http://localhost:3000
+    description: Local development server (Docker)
+  - url: https://dev-api.example.com/api/v1
+    description: Development environment
+  - url: https://staging-api.example.com/api/v1
+    description: Staging environment
+  - url: https://api.example.com/api/v1
+    description: Production environment
+
+tags:
+  - name: Verification
+    description: Identity verification operations
+  - name: Health
+    description: Service health and readiness checks
+
+paths:
+  /verification/identity:
+    post:
+      tags:
+        - Verification
+      summary: Initiate identity verification
+      description: |
+        Initiates a comprehensive identity verification process for a customer.
+        Creates verification record and queues asynchronous checks including:
+        - Credit bureau FICO score validation
+        - Government ID verification
+        - Fraud detection pattern analysis
+        - Address verification
+
+        Returns verification tracking ID immediately while processing continues asynchronously.
+      operationId: initiateVerification
+      parameters:
+        - $ref: '#/components/parameters/TraceIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitiateVerificationRequest'
+            examples:
+              full-verification:
+                summary: Full identity verification
+                value:
+                  customerId: "123456789"
+                  verificationType: "full"
+                  verificationData:
+                    ssn: "123-45-6789"
+                    dateOfBirth: "1985-06-15"
+                    governmentId: "DL12345678"
+                    governmentIdType: "drivers_license"
+                    governmentIdState: "IL"
+                    address:
+                      line1: "123 Main Street"
+                      city: "Chicago"
+                      state: "IL"
+                      zipCode: "60601"
+                  priority: "high"
+      responses:
+        '200':
+          description: Verification initiated successfully
+          headers:
+            x-trace-id:
+              $ref: '#/components/headers/TraceId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InitiateVerificationResponse'
+              examples:
+                success:
+                  value:
+                    verificationId: "VER-20240115-A1B2C3"
+                    customerId: "123456789"
+                    status: "in_progress"
+                    initiatedAt: "2024-01-15T10:30:00Z"
+                    estimatedCompletion: "2024-01-15T10:35:00Z"
+                    checks:
+                      - checkType: "credit_bureau"
+                        status: "pending"
+                      - checkType: "government_id"
+                        status: "pending"
+                      - checkType: "fraud_detection"
+                        status: "pending"
+                      - checkType: "address_verification"
+                        status: "pending"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/VerificationFailed'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /verification/identity/{verificationId}:
+    get:
+      tags:
+        - Verification
+      summary: Get verification status
+      description: |
+        Retrieves the current status and results of an identity verification process.
+        Returns detailed information about each verification check and overall approval status.
+      operationId: getVerificationStatus
+      parameters:
+        - name: verificationId
+          in: path
+          required: true
+          description: Unique verification tracking ID
+          schema:
+            type: string
+            pattern: '^VER-\d{8}-[A-Z0-9]{6}$'
+          example: "VER-20240115-A1B2C3"
+        - $ref: '#/components/parameters/TraceIdHeader'
+      responses:
+        '200':
+          description: Verification status retrieved successfully
+          headers:
+            x-trace-id:
+              $ref: '#/components/headers/TraceId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationStatusResponse'
+              examples:
+                completed-passed:
+                  summary: Verification completed and passed
+                  value:
+                    verificationId: "VER-20240115-A1B2C3"
+                    customerId: "123456789"
+                    status: "completed"
+                    completedAt: "2024-01-15T10:33:45Z"
+                    overallResult: "passed"
+                    checks:
+                      - checkType: "credit_bureau"
+                        status: "completed"
+                        result: "passed"
+                        details:
+                          ficoScore: 720
+                          creditReportPulled: true
+                          bureauResponse: "success"
+                      - checkType: "government_id"
+                        status: "completed"
+                        result: "passed"
+                        details:
+                          idValid: true
+                          idActive: true
+                          nameMatch: true
+                          addressMatch: true
+                      - checkType: "fraud_detection"
+                        status: "completed"
+                        result: "passed"
+                        details:
+                          riskScore: 15
+                          riskLevel: "low"
+                          flaggedPatterns: []
+                      - checkType: "address_verification"
+                        status: "completed"
+                        result: "passed"
+                        details:
+                          addressValid: true
+                          deliverable: true
+                          residentialType: "single_family"
+                    manualReviewRequired: false
+                    approvalStatus: "auto_approved"
+                in-progress:
+                  summary: Verification in progress
+                  value:
+                    verificationId: "VER-20240115-A1B2C3"
+                    customerId: "123456789"
+                    status: "in_progress"
+                    checks:
+                      - checkType: "credit_bureau"
+                        status: "completed"
+                        result: "passed"
+                      - checkType: "government_id"
+                        status: "in_progress"
+                      - checkType: "fraud_detection"
+                        status: "pending"
+                      - checkType: "address_verification"
+                        status: "pending"
+                    manualReviewRequired: false
+                    approvalStatus: "pending_review"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe
+      description: Checks if the service is ready to handle requests (includes database connectivity check)
+      operationId: readinessCheck
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: "ready"
+                timestamp: "2024-01-15T10:30:00Z"
+                checks:
+                  database: "healthy"
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: "not ready"
+                timestamp: "2024-01-15T10:30:00Z"
+                checks:
+                  database: "unhealthy"
+
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: Checks if the service is alive and running
+      operationId: livenessCheck
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LivenessResponse'
+              example:
+                status: "alive"
+                timestamp: "2024-01-15T10:30:00Z"
+                uptime: 3600.5
+
+  /customer-verification/health:
+    get:
+      tags:
+        - Health
+      summary: General health check
+      description: Returns general health status and service information
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "healthy"
+                timestamp: "2024-01-15T10:30:00Z"
+                service: "customer-verification-service"
+                version: "1.0.0"
+
+components:
+  parameters:
+    TraceIdHeader:
+      name: x-trace-id
+      in: header
+      description: Trace ID for request correlation and audit logging
+      required: false
+      schema:
+        type: string
+        format: uuid
+      example: "550e8400-e29b-41d4-a716-446655440000"
+
+  headers:
+    TraceId:
+      description: Trace ID for request correlation
+      schema:
+        type: string
+        format: uuid
+      example: "550e8400-e29b-41d4-a716-446655440000"
+
+  schemas:
+    Address:
+      type: object
+      required:
+        - line1
+        - city
+        - state
+        - zipCode
+      properties:
+        line1:
+          type: string
+          description: Primary address line
+          example: "123 Main Street"
+        line2:
+          type: string
+          description: Secondary address line
+          example: "Apt 4B"
+        city:
+          type: string
+          description: City name
+          example: "Chicago"
+        state:
+          type: string
+          description: State code (2 characters)
+          minLength: 2
+          maxLength: 2
+          example: "IL"
+        zipCode:
+          type: string
+          description: ZIP code
+          pattern: '^\d{5}(-\d{4})?$'
+          example: "60601"
+
+    VerificationData:
+      type: object
+      required:
+        - ssn
+        - dateOfBirth
+        - governmentId
+        - governmentIdType
+        - governmentIdState
+        - address
+      properties:
+        ssn:
+          type: string
+          description: Social Security Number
+          pattern: '^\d{3}-\d{2}-\d{4}$'
+          example: "123-45-6789"
+        dateOfBirth:
+          type: string
+          format: date
+          description: Date of birth (must indicate age 18+)
+          example: "1985-06-15"
+        governmentId:
+          type: string
+          description: Government-issued ID number
+          maxLength: 20
+          example: "DL12345678"
+        governmentIdType:
+          type: string
+          enum:
+            - drivers_license
+            - passport
+            - state_id
+            - military_id
+          description: Type of government ID
+          example: "drivers_license"
+        governmentIdState:
+          type: string
+          description: State that issued the ID (2 characters)
+          minLength: 2
+          maxLength: 2
+          example: "IL"
+        address:
+          $ref: '#/components/schemas/Address'
+
+    InitiateVerificationRequest:
+      type: object
+      required:
+        - customerId
+        - verificationType
+        - verificationData
+        - priority
+      properties:
+        customerId:
+          type: string
+          description: Customer identifier
+          minLength: 9
+          maxLength: 9
+          example: "123456789"
+        verificationType:
+          type: string
+          enum:
+            - full
+            - partial
+            - update
+          description: Type of verification to perform
+          example: "full"
+        verificationData:
+          $ref: '#/components/schemas/VerificationData'
+        priority:
+          type: string
+          enum:
+            - high
+            - medium
+            - low
+          description: Processing priority
+          example: "high"
+
+    CheckStatus:
+      type: object
+      required:
+        - checkType
+        - status
+      properties:
+        checkType:
+          type: string
+          enum:
+            - credit_bureau
+            - government_id
+            - fraud_detection
+            - address_verification
+          description: Type of verification check
+          example: "credit_bureau"
+        status:
+          type: string
+          enum:
+            - pending
+            - in_progress
+            - completed
+            - failed
+            - service_unavailable
+          description: Current status of the check
+          example: "completed"
+        result:
+          type: string
+          enum:
+            - passed
+            - failed
+            - review_required
+          description: Result of the check (available when status is completed)
+          example: "passed"
+        details:
+          type: object
+          description: Detailed check-specific results
+          additionalProperties: true
+          example:
+            ficoScore: 720
+            creditReportPulled: true
+            bureauResponse: "success"
+
+    InitiateVerificationResponse:
+      type: object
+      required:
+        - verificationId
+        - customerId
+        - status
+        - initiatedAt
+        - estimatedCompletion
+        - checks
+      properties:
+        verificationId:
+          type: string
+          description: Unique verification tracking ID
+          pattern: '^VER-\d{8}-[A-Z0-9]{6}$'
+          example: "VER-20240115-A1B2C3"
+        customerId:
+          type: string
+          description: Customer identifier
+          example: "123456789"
+        status:
+          type: string
+          enum:
+            - in_progress
+            - completed
+            - failed
+          description: Overall verification status
+          example: "in_progress"
+        initiatedAt:
+          type: string
+          format: date-time
+          description: Verification start timestamp
+          example: "2024-01-15T10:30:00Z"
+        estimatedCompletion:
+          type: string
+          format: date-time
+          description: Expected completion timestamp
+          example: "2024-01-15T10:35:00Z"
+        checks:
+          type: array
+          description: List of verification checks
+          items:
+            $ref: '#/components/schemas/CheckStatus'
+
+    VerificationStatusResponse:
+      type: object
+      required:
+        - verificationId
+        - customerId
+        - status
+        - checks
+        - manualReviewRequired
+        - approvalStatus
+      properties:
+        verificationId:
+          type: string
+          description: Unique verification tracking ID
+          example: "VER-20240115-A1B2C3"
+        customerId:
+          type: string
+          description: Customer identifier
+          example: "123456789"
+        status:
+          type: string
+          enum:
+            - in_progress
+            - completed
+            - failed
+          description: Overall verification status
+          example: "completed"
+        completedAt:
+          type: string
+          format: date-time
+          description: Verification completion timestamp
+          example: "2024-01-15T10:33:45Z"
+        overallResult:
+          type: string
+          enum:
+            - passed
+            - failed
+            - review_required
+          description: Overall verification result
+          example: "passed"
+        checks:
+          type: array
+          description: Detailed check results
+          items:
+            $ref: '#/components/schemas/CheckStatus'
+        manualReviewRequired:
+          type: boolean
+          description: Indicates if manual review is needed
+          example: false
+        approvalStatus:
+          type: string
+          enum:
+            - auto_approved
+            - declined_credit
+            - pending_documents
+            - pending_review
+            - suspended
+          description: Final approval status
+          example: "auto_approved"
+
+    ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - message
+        - timestamp
+        - traceId
+      properties:
+        errorCode:
+          type: string
+          description: Machine-readable error code
+          example: "VALIDATION_ERROR"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Invalid SSN format. Expected format: xxx-xx-xxxx"
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp
+          example: "2024-01-15T10:30:00Z"
+        traceId:
+          type: string
+          description: Trace ID for request correlation
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+    ReadinessResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - checks
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - not ready
+          example: "ready"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+        checks:
+          type: object
+          properties:
+            database:
+              type: string
+              enum:
+                - healthy
+                - unhealthy
+              example: "healthy"
+
+    LivenessResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - uptime
+      properties:
+        status:
+          type: string
+          enum:
+            - alive
+          example: "alive"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+        uptime:
+          type: number
+          description: Service uptime in seconds
+          example: 3600.5
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - service
+        - version
+      properties:
+        status:
+          type: string
+          enum:
+            - healthy
+          example: "healthy"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T10:30:00Z"
+        service:
+          type: string
+          example: "customer-verification-service"
+        version:
+          type: string
+          example: "1.0.0"
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid input
+      headers:
+        x-trace-id:
+          $ref: '#/components/headers/TraceId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            errorCode: "VALIDATION_ERROR"
+            message: "Invalid SSN format. Expected format: xxx-xx-xxxx"
+            timestamp: "2024-01-15T10:30:00Z"
+            traceId: "550e8400-e29b-41d4-a716-446655440000"
+
+    Unauthorized:
+      description: Unauthorized - invalid or missing authentication
+      headers:
+        x-trace-id:
+          $ref: '#/components/headers/TraceId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            errorCode: "UNAUTHORIZED"
+            message: "Invalid or missing authentication token"
+            timestamp: "2024-01-15T10:30:00Z"
+            traceId: "550e8400-e29b-41d4-a716-446655440000"
+
+    NotFound:
+      description: Not found - resource does not exist
+      headers:
+        x-trace-id:
+          $ref: '#/components/headers/TraceId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            errorCode: "NOT_FOUND"
+            message: "Verification with ID VER-20240115-A1B2C3 not found"
+            timestamp: "2024-01-15T10:30:00Z"
+            traceId: "550e8400-e29b-41d4-a716-446655440000"
+
+    VerificationFailed:
+      description: Verification failed - one or more checks did not pass
+      headers:
+        x-trace-id:
+          $ref: '#/components/headers/TraceId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            errorCode: "VERIFICATION_FAILED"
+            message: "SSN already exists for a different customer"
+            timestamp: "2024-01-15T10:30:00Z"
+            traceId: "550e8400-e29b-41d4-a716-446655440000"
+
+    InternalServerError:
+      description: Internal server error
+      headers:
+        x-trace-id:
+          $ref: '#/components/headers/TraceId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            errorCode: "INTERNAL_SERVER_ERROR"
+            message: "An unexpected error occurred"
+            timestamp: "2024-01-15T10:30:00Z"
+            traceId: "550e8400-e29b-41d4-a716-446655440000"
+
+    ServiceUnavailable:
+      description: Service unavailable - external service timeout or unavailable
+      headers:
+        x-trace-id:
+          $ref: '#/components/headers/TraceId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            errorCode: "EXTERNAL_SERVICE_ERROR"
+            message: "Credit bureau service unavailable"
+            timestamp: "2024-01-15T10:30:00Z"
+            traceId: "550e8400-e29b-41d4-a716-446655440000"
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Internal service JWT token for authentication
+
+security:
+  - BearerAuth: []

@@ -1,0 +1,688 @@
+# OpenAPI spec for service customer-profile-service
+openapi: 3.0.3
+info:
+  title: Customer Profile Service API
+  description: |
+    Provides secure access to customer profile information with role-based field visibility and update capabilities.
+    Maintains comprehensive audit trails for all customer data modifications and supports both full profile retrieval
+    and selective field updates.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+  - url: http://localhost:3000
+    description: Docker local
+  - url: https://api-dev.example.com
+    description: Development environment
+  - url: https://api-staging.example.com
+    description: Staging environment
+  - url: https://api.example.com
+    description: Production environment
+
+tags:
+  - name: Customers
+    description: Customer profile operations
+  - name: Health
+    description: Health check endpoints
+
+paths:
+  /api/v1/customers/{customerId}:
+    get:
+      tags:
+        - Customers
+      summary: Retrieve customer profile
+      description: |
+        Retrieves a customer profile with role-based field masking. Supports caching with Redis (TTL 5 minutes).
+        - ADMIN: Full access to all fields
+        - CSR: Partial masking of SSN, full mask of government ID, FICO score hidden
+        - CUSTOMER: Can only access their own data with full masking of sensitive fields
+      operationId: getCustomer
+      parameters:
+        - name: customerId
+          in: path
+          description: Unique customer identifier (9 digits)
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{9}$'
+          example: "123456789"
+        - name: includeAccounts
+          in: query
+          description: Include associated accounts in response
+          required: false
+          schema:
+            type: boolean
+            default: false
+          example: true
+        - name: includeCards
+          in: query
+          description: Include associated cards in response
+          required: false
+          schema:
+            type: boolean
+            default: false
+          example: false
+        - name: X-Trace-Id
+          in: header
+          description: Correlation ID for request tracing
+          required: false
+          schema:
+            type: string
+            format: uuid
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Customer profile retrieved successfully
+          headers:
+            X-Trace-Id:
+              description: Correlation ID for request tracing
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerResponse'
+              examples:
+                adminView:
+                  summary: Admin view (full access)
+                  value:
+                    customerId: "123456789"
+                    firstName: "John"
+                    middleName: "Michael"
+                    lastName: "Anderson"
+                    dateOfBirth: "1985-06-15"
+                    ssn: "123-45-6789"
+                    governmentId: "DL12345678"
+                    addressLine1: "123 Main Street"
+                    addressLine2: "Apt 4B"
+                    city: "Chicago"
+                    state: "IL"
+                    zipCode: "60601"
+                    country: "USA"
+                    phone1: "312-555-0123"
+                    phone2: "312-555-0456"
+                    eftAccountId: "EFT987654321"
+                    isPrimaryCardholder: true
+                    ficoScore: 720
+                    status: "active"
+                    createdAt: "2024-01-15T10:30:00Z"
+                    updatedAt: "2024-01-20T14:22:00Z"
+                    accounts:
+                      - accountId: "12345678901"
+                        status: "active"
+                        balance: 2450.75
+                csrView:
+                  summary: CSR view (partial masking)
+                  value:
+                    customerId: "123456789"
+                    firstName: "John"
+                    middleName: "Michael"
+                    lastName: "Anderson"
+                    dateOfBirth: "1985-06-15"
+                    ssn: "***-**-6789"
+                    governmentId: "***45678"
+                    addressLine1: "123 Main Street"
+                    addressLine2: "Apt 4B"
+                    city: "Chicago"
+                    state: "IL"
+                    zipCode: "60601"
+                    country: "USA"
+                    phone1: "312-555-0123"
+                    phone2: "312-555-0456"
+                    eftAccountId: "EFT987654321"
+                    isPrimaryCardholder: true
+                    status: "active"
+                    createdAt: "2024-01-15T10:30:00Z"
+                    updatedAt: "2024-01-20T14:22:00Z"
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "VALIDATION_ERROR"
+                message: "Customer ID must be exactly 9 digits"
+                timestamp: "2024-01-21T10:30:00Z"
+                traceId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        '401':
+          description: Unauthorized - Invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "UNAUTHORIZED"
+                message: "Invalid or expired token"
+                timestamp: "2024-01-21T10:30:00Z"
+                traceId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        '403':
+          description: Forbidden - Insufficient privileges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "FORBIDDEN"
+                message: "Customers can only access their own data"
+                timestamp: "2024-01-21T10:30:00Z"
+                traceId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "NOT_FOUND"
+                message: "Customer 123456789 not found"
+                timestamp: "2024-01-21T10:30:00Z"
+                traceId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "INTERNAL_SERVER_ERROR"
+                message: "An unexpected error occurred"
+                timestamp: "2024-01-21T10:30:00Z"
+                traceId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+    put:
+      tags:
+        - Customers
+      summary: Update customer profile
+      description: |
+        Updates selected fields of a customer profile with optimistic locking and comprehensive audit logging.
+        Validates state/ZIP code cross-validation and phone number format.
+        Restricted fields (SSN, DOB, FICO score) require elevated privileges.
+      operationId: updateCustomer
+      parameters:
+        - name: customerId
+          in: path
+          description: Unique customer identifier (9 digits)
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{9}$'
+          example: "123456789"
+        - name: X-Trace-Id
+          in: header
+          description: Correlation ID for request tracing
+          required: false
+          schema:
+            type: string
+            format: uuid
+      security:
+        - BearerAuth: []
+      requestBody:
+        description: Fields to update (all optional, send only fields to be updated)
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCustomerRequest'
+            examples:
+              addressUpdate:
+                summary: Update address
+                value:
+                  addressLine1: "456 Oak Avenue"
+                  addressLine2: "Suite 200"
+                  city: "Chicago"
+                  state: "IL"
+                  zipCode: "60602"
+              phoneUpdate:
+                summary: Update phone numbers
+                value:
+                  phone1: "312-555-9999"
+                  phone2: "312-555-8888"
+      responses:
+        '200':
+          description: Customer updated successfully
+          headers:
+            X-Trace-Id:
+              description: Correlation ID for request tracing
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateCustomerResponse'
+              example:
+                customerId: "123456789"
+                updatedFields: ["addressLine1", "zipCode", "phone1"]
+                updatedAt: "2024-01-21T09:15:00Z"
+                updatedBy: "CSR00123"
+        '400':
+          description: Validation errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "VALIDATION_ERROR"
+                message: "Validation failed"
+                timestamp: "2024-01-21T10:30:00Z"
+                traceId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                details:
+                  phone1: "Invalid phone number format: 555-1234. Expected format: XXX-XXX-XXXX"
+        '401':
+          description: Unauthorized - Invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Insufficient privileges for sensitive field update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "FORBIDDEN"
+                message: "This field (fico_score) cannot be modified via self-service"
+                timestamp: "2024-01-21T10:30:00Z"
+                traceId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - Optimistic lock failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "CONFLICT"
+                message: "Customer data was modified by another user"
+                timestamp: "2024-01-21T10:30:00Z"
+                traceId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        '422':
+          description: Unprocessable Entity - State/ZIP mismatch or validation failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "UNPROCESSABLE_ENTITY"
+                message: "New ZIP code 60701 does not match state IL, expected IL prefix 60, 61, 62"
+                timestamp: "2024-01-21T10:30:00Z"
+                traceId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                details:
+                  state: "IL"
+                  zipCode: "60701"
+                  expectedPrefixes: "60, 61, 62"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: Basic liveness check to verify service is running
+      operationId: healthLive
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "UP"
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: "2024-01-21T10:30:00Z"
+
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe
+      description: Comprehensive readiness check including database and Redis connectivity
+      operationId: healthReady
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+              example:
+                status: "UP"
+                timestamp: "2024-01-21T10:30:00Z"
+                service: "customer-profile-service"
+                version: "1.0.0"
+                dependencies:
+                  database: "UP"
+                  redis: "UP"
+        '503':
+          description: Service not ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "DOWN"
+                  timestamp:
+                    type: string
+                    format: date-time
+                  service:
+                    type: string
+                  version:
+                    type: string
+                  error:
+                    type: string
+
+  /api/customer-profile/health:
+    get:
+      tags:
+        - Health
+      summary: Alternative health check endpoint
+      description: Legacy health check endpoint (alias for /health/ready)
+      operationId: healthAlternative
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token with user role and permissions.
+        Format: Bearer <token>
+        Token should contain: userId, role (ADMIN/CSR/CUSTOMER), customerId (for CUSTOMER role)
+
+  schemas:
+    CustomerResponse:
+      type: object
+      required:
+        - customerId
+        - firstName
+        - lastName
+        - dateOfBirth
+        - ssn
+        - governmentId
+        - addressLine1
+        - city
+        - state
+        - zipCode
+        - country
+        - phone1
+        - eftAccountId
+        - isPrimaryCardholder
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        customerId:
+          type: string
+          maxLength: 9
+          pattern: '^\d{9}$'
+          description: Unique customer identifier
+        firstName:
+          type: string
+          maxLength: 25
+          description: Customer first name
+        middleName:
+          type: string
+          maxLength: 25
+          description: Customer middle name
+        lastName:
+          type: string
+          maxLength: 25
+          description: Customer last name
+        dateOfBirth:
+          type: string
+          format: date
+          description: Customer date of birth (YYYY-MM-DD)
+        ssn:
+          type: string
+          maxLength: 11
+          description: Social Security Number (masked based on user role)
+        governmentId:
+          type: string
+          maxLength: 20
+          description: Government-issued ID (masked based on user role)
+        addressLine1:
+          type: string
+          maxLength: 50
+          description: Primary address line
+        addressLine2:
+          type: string
+          maxLength: 50
+          description: Secondary address line
+        city:
+          type: string
+          maxLength: 50
+          description: City
+        state:
+          type: string
+          maxLength: 2
+          description: State code (2 letters)
+        zipCode:
+          type: string
+          maxLength: 10
+          description: ZIP/Postal code
+        country:
+          type: string
+          maxLength: 50
+          description: Country
+        phone1:
+          type: string
+          maxLength: 15
+          description: Primary phone number (XXX-XXX-XXXX)
+        phone2:
+          type: string
+          maxLength: 15
+          description: Secondary phone number (XXX-XXX-XXXX)
+        eftAccountId:
+          type: string
+          maxLength: 20
+          description: EFT account identifier
+        isPrimaryCardholder:
+          type: boolean
+          description: Whether customer is primary cardholder
+        ficoScore:
+          type: integer
+          minimum: 300
+          maximum: 850
+          description: FICO credit score (visible only to ADMIN role)
+        status:
+          type: string
+          enum: [active, inactive, suspended]
+          description: Customer account status
+        createdAt:
+          type: string
+          format: date-time
+          description: Creation timestamp (ISO 8601)
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp (ISO 8601)
+        accounts:
+          type: array
+          description: Associated accounts (if includeAccounts=true)
+          items:
+            $ref: '#/components/schemas/Account'
+
+    Account:
+      type: object
+      required:
+        - accountId
+        - status
+        - balance
+      properties:
+        accountId:
+          type: string
+          maxLength: 11
+          description: Unique account identifier
+        status:
+          type: string
+          enum: [active, inactive, closed]
+          description: Account status
+        balance:
+          type: number
+          format: double
+          description: Current account balance
+
+    UpdateCustomerRequest:
+      type: object
+      properties:
+        addressLine1:
+          type: string
+          maxLength: 50
+          description: Updated primary address
+        addressLine2:
+          type: string
+          maxLength: 50
+          description: Updated secondary address
+        city:
+          type: string
+          maxLength: 50
+          description: Updated city
+        state:
+          type: string
+          maxLength: 2
+          pattern: '^[A-Z]{2}$'
+          description: Updated state code (2 letters, uppercase)
+        zipCode:
+          type: string
+          maxLength: 10
+          description: Updated ZIP/Postal code
+        phone1:
+          type: string
+          maxLength: 15
+          pattern: '^\d{3}-\d{3}-\d{4}$'
+          description: Updated primary phone (format XXX-XXX-XXXX)
+        phone2:
+          type: string
+          maxLength: 15
+          pattern: '^\d{3}-\d{3}-\d{4}$'
+          description: Updated secondary phone (format XXX-XXX-XXXX)
+
+    UpdateCustomerResponse:
+      type: object
+      required:
+        - customerId
+        - updatedFields
+        - updatedAt
+        - updatedBy
+      properties:
+        customerId:
+          type: string
+          maxLength: 9
+          description: Customer identifier
+        updatedFields:
+          type: array
+          items:
+            type: string
+          description: List of fields that were modified
+        updatedAt:
+          type: string
+          format: date-time
+          description: Update timestamp (ISO 8601)
+        updatedBy:
+          type: string
+          maxLength: 8
+          description: User ID who performed the update
+
+    ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - message
+        - timestamp
+      properties:
+        errorCode:
+          type: string
+          enum:
+            - VALIDATION_ERROR
+            - UNAUTHORIZED
+            - FORBIDDEN
+            - NOT_FOUND
+            - CONFLICT
+            - UNPROCESSABLE_ENTITY
+            - INTERNAL_SERVER_ERROR
+          description: Machine-readable error code
+        message:
+          type: string
+          description: Human-readable error message
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp (ISO 8601)
+        traceId:
+          type: string
+          format: uuid
+          description: Correlation ID for request tracing
+        details:
+          type: object
+          additionalProperties:
+            type: string
+          description: Additional error details (field-level validation errors)
+
+    HealthCheckResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - service
+        - version
+        - dependencies
+      properties:
+        status:
+          type: string
+          enum: [UP, DOWN]
+          description: Overall service status
+        timestamp:
+          type: string
+          format: date-time
+          description: Health check timestamp
+        service:
+          type: string
+          description: Service name
+        version:
+          type: string
+          description: Service version
+        dependencies:
+          type: object
+          properties:
+            database:
+              type: string
+              enum: [UP, DOWN]
+              description: Database connection status
+            redis:
+              type: string
+              enum: [UP, DOWN]
+              description: Redis connection status

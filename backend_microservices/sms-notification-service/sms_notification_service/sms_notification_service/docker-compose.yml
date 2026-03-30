@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sms-notification-service
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=sms_notification_db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_POOL_MIN=2
+      - DB_POOL_MAX=10
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+      - TWILIO_FROM_NUMBER=${TWILIO_FROM_NUMBER}
+      - RETRY_MAX_ATTEMPTS=1
+      - RETRY_DELAY_MS=1000
+      - EMAIL_ENABLED=false
+      - EMAIL_FALLBACK_ENABLED=false
+      - CORS_ORIGINS=*
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - sms-notification-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health/live', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: sms-notification-postgres
+    environment:
+      - POSTGRES_DB=sms_notification_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - sms-notification-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  sms-notification-network:
+    driver: bridge
+
+volumes:
+  postgres-data:

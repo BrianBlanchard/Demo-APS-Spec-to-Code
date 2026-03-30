@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fee-processing-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: fee_processing
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fee-processing-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fee-processing-service
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      SERVICE_NAME: fee-processing-service
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: fee_processing
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_POOL_MIN: 2
+      DB_POOL_MAX: 10
+      CORS_ORIGIN: "*"
+      LOG_LEVEL: info
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - fee-processing-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  fee-processing-network:
+    driver: bridge

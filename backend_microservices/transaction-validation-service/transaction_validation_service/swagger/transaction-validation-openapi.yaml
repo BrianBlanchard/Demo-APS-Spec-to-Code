@@ -1,0 +1,581 @@
+openapi: 3.0.3
+info:
+  title: Transaction Validation Service API
+  version: 1.0.0
+  description: |
+    Real-time credit card transaction validation service that validates incoming transactions
+    in under 500ms, checking card status, account status, credit availability, and detecting
+    potentially fraudulent activity.
+  contact:
+    name: API Support
+    email: api-support@example.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+  - url: http://localhost:3000
+    description: Docker container
+  - url: https://dev-transaction-validation.example.com
+    description: Development environment
+  - url: https://staging-transaction-validation.example.com
+    description: Staging environment
+  - url: https://transaction-validation.example.com
+    description: Production environment
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe
+      description: Check if the service is ready to accept requests
+      operationId: checkReadiness
+      security: []
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ready
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: not ready
+
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: Check if the service is alive
+      operationId: checkLiveness
+      security: []
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: alive
+
+  /api/v1/transaction-validation/health:
+    get:
+      tags:
+        - Health
+      summary: Service health check
+      description: Comprehensive health check including database and Redis connectivity
+      operationId: checkHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/v1/transactions/validate:
+    post:
+      tags:
+        - Transaction Validation
+      summary: Validate transaction
+      description: |
+        Validates a credit card transaction in real-time. Performs comprehensive checks including:
+        - Card number format validation (Luhn algorithm)
+        - Card and account status verification
+        - Credit availability check
+        - CVV validation (for online transactions)
+        - Duplicate transaction detection
+        - Daily transaction limits
+        - Card expiration verification
+      operationId: validateTransaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateTransactionRequest'
+            examples:
+              purchaseTransaction:
+                summary: Purchase transaction
+                value:
+                  cardNumber: "4532123456781234"
+                  transactionType: "01"
+                  transactionCategory: "5411"
+                  amount: 125.50
+                  merchantId: "MERCH12345"
+                  merchantName: "AMAZON.COM"
+                  merchantCity: "Seattle"
+                  merchantZip: "98101"
+                  transactionTimestamp: "2024-01-15T14:30:00Z"
+                  transactionSource: "POS"
+              onlineTransaction:
+                summary: Online transaction with CVV
+                value:
+                  cardNumber: "4532123456781234"
+                  transactionType: "01"
+                  transactionCategory: "5411"
+                  amount: 75.00
+                  merchantId: "MERCH67890"
+                  merchantName: "EBAY.COM"
+                  merchantCity: "San Jose"
+                  merchantZip: "95110"
+                  transactionTimestamp: "2024-01-15T14:35:00Z"
+                  transactionSource: "online"
+                  cvv: "123"
+      responses:
+        '200':
+          description: Validation completed (approved or declined)
+          headers:
+            X-Trace-Id:
+              description: Trace ID for request tracking
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationApprovedResponse'
+                  - $ref: '#/components/schemas/ValidationDeclinedResponse'
+              examples:
+                approved:
+                  summary: Transaction approved
+                  value:
+                    validationId: "VAL-20240115-ABC123"
+                    validationResult: "approved"
+                    cardNumber: "************1234"
+                    accountId: "12345678901"
+                    amount: 125.50
+                    availableCredit: 2549.25
+                    remainingCreditAfter: 2423.75
+                    authorizationCode: "AUTH789456"
+                    timestamp: "2024-01-15T14:30:00.234Z"
+                    validationChecks:
+                      - check: "card_expiration"
+                        result: "pass"
+                      - check: "card_active"
+                        result: "pass"
+                      - check: "account_active"
+                        result: "pass"
+                      - check: "sufficient_credit"
+                        result: "pass"
+                      - check: "daily_limit"
+                        result: "pass"
+                      - check: "duplicate_check"
+                        result: "pass"
+                declined:
+                  summary: Transaction declined
+                  value:
+                    validationId: "VAL-20240115-XYZ789"
+                    validationResult: "declined"
+                    declineReason: "insufficient_credit"
+                    declineReasonDescription: "Transaction amount exceeds available credit"
+                    cardNumber: "************1234"
+                    amount: 3000.00
+                    availableCredit: 2549.25
+                    timestamp: "2024-01-15T14:30:00.234Z"
+                    validationChecks:
+                      - check: "card_expiration"
+                        result: "pass"
+                      - check: "card_active"
+                        result: "pass"
+                      - check: "account_active"
+                        result: "pass"
+                      - check: "sufficient_credit"
+                        result: "fail"
+                        details: "Required: 3000.00, Available: 2549.25"
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "VALIDATION_ERROR"
+                message: "Validation failed"
+                timestamp: "2024-01-15T14:30:00.234Z"
+                traceId: "550e8400-e29b-41d4-a716-446655440000"
+                details:
+                  - path: "cardNumber"
+                    message: "Card number must be exactly 16 digits"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "UNAUTHORIZED"
+                message: "Invalid API key"
+                timestamp: "2024-01-15T14:30:00.234Z"
+                traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "DATABASE_ERROR"
+                message: "Database operation failed"
+                timestamp: "2024-01-15T14:30:00.234Z"
+                traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '504':
+          description: Validation timeout
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "TIMEOUT_ERROR"
+                message: "Operation timed out"
+                timestamp: "2024-01-15T14:30:00.234Z"
+                traceId: "550e8400-e29b-41d4-a716-446655440000"
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authentication
+
+  schemas:
+    ValidateTransactionRequest:
+      type: object
+      required:
+        - cardNumber
+        - transactionType
+        - transactionCategory
+        - amount
+        - merchantId
+        - merchantName
+        - merchantCity
+        - merchantZip
+        - transactionTimestamp
+        - transactionSource
+      properties:
+        cardNumber:
+          type: string
+          pattern: '^\d{16}$'
+          description: 16-digit credit card number
+          example: "4532123456781234"
+        transactionType:
+          type: string
+          enum: ["01", "02", "03", "04", "05", "06"]
+          description: |
+            Transaction type code:
+            - 01: Purchase
+            - 02: Payment
+            - 03: Cash advance
+            - 04: Fee
+            - 05: Interest
+            - 06: Adjustment
+          example: "01"
+        transactionCategory:
+          type: string
+          pattern: '^\d{4}$'
+          description: 4-digit merchant category code (MCC)
+          example: "5411"
+        amount:
+          type: number
+          format: decimal
+          minimum: 0.01
+          maximum: 999999999999.99
+          multipleOf: 0.01
+          description: Transaction amount (up to 2 decimal places)
+          example: 125.50
+        merchantId:
+          type: string
+          maxLength: 10
+          description: Merchant identifier
+          example: "MERCH12345"
+        merchantName:
+          type: string
+          maxLength: 50
+          description: Merchant name
+          example: "AMAZON.COM"
+        merchantCity:
+          type: string
+          maxLength: 50
+          description: Merchant city
+          example: "Seattle"
+        merchantZip:
+          type: string
+          maxLength: 10
+          description: Merchant ZIP code
+          example: "98101"
+        transactionTimestamp:
+          type: string
+          format: date-time
+          description: Transaction timestamp in ISO 8601 format
+          example: "2024-01-15T14:30:00Z"
+        transactionSource:
+          type: string
+          enum: ["POS", "online", "ATM"]
+          description: Transaction source
+          example: "POS"
+        cvv:
+          type: string
+          pattern: '^\d{3}$'
+          description: 3-digit CVV code (required for online transactions)
+          example: "123"
+
+    ValidationApprovedResponse:
+      type: object
+      required:
+        - validationId
+        - validationResult
+        - cardNumber
+        - accountId
+        - amount
+        - availableCredit
+        - remainingCreditAfter
+        - authorizationCode
+        - timestamp
+        - validationChecks
+      properties:
+        validationId:
+          type: string
+          description: Unique validation identifier
+          example: "VAL-20240115-ABC123"
+        validationResult:
+          type: string
+          enum: ["approved"]
+          description: Validation result
+          example: "approved"
+        cardNumber:
+          type: string
+          pattern: '^\*{12}\d{4}$'
+          description: Masked card number (last 4 digits visible)
+          example: "************1234"
+        accountId:
+          type: string
+          pattern: '^\d{11}$'
+          description: Account identifier
+          example: "12345678901"
+        amount:
+          type: number
+          format: decimal
+          description: Transaction amount
+          example: 125.50
+        availableCredit:
+          type: number
+          format: decimal
+          description: Available credit before transaction
+          example: 2549.25
+        remainingCreditAfter:
+          type: number
+          format: decimal
+          description: Remaining credit after transaction approval
+          example: 2423.75
+        authorizationCode:
+          type: string
+          description: Authorization code for approved transaction
+          example: "AUTH789456"
+        timestamp:
+          type: string
+          format: date-time
+          description: Validation timestamp with milliseconds
+          example: "2024-01-15T14:30:00.234Z"
+        validationChecks:
+          type: array
+          description: Individual validation check results
+          items:
+            $ref: '#/components/schemas/ValidationCheck'
+
+    ValidationDeclinedResponse:
+      type: object
+      required:
+        - validationId
+        - validationResult
+        - declineReason
+        - declineReasonDescription
+        - cardNumber
+        - amount
+        - availableCredit
+        - timestamp
+        - validationChecks
+      properties:
+        validationId:
+          type: string
+          description: Unique validation identifier
+          example: "VAL-20240115-XYZ789"
+        validationResult:
+          type: string
+          enum: ["declined"]
+          description: Validation result
+          example: "declined"
+        declineReason:
+          type: string
+          enum:
+            - insufficient_credit
+            - card_inactive
+            - account_inactive
+            - invalid_cvv
+            - duplicate_transaction
+            - daily_limit_exceeded
+            - invalid_card
+            - expired_card
+          description: Decline reason code
+          example: "insufficient_credit"
+        declineReasonDescription:
+          type: string
+          description: Human-readable decline reason
+          example: "Transaction amount exceeds available credit"
+        cardNumber:
+          type: string
+          pattern: '^\*{12}\d{4}$'
+          description: Masked card number (last 4 digits visible)
+          example: "************1234"
+        amount:
+          type: number
+          format: decimal
+          description: Transaction amount
+          example: 3000.00
+        availableCredit:
+          type: number
+          format: decimal
+          description: Available credit
+          example: 2549.25
+        timestamp:
+          type: string
+          format: date-time
+          description: Validation timestamp with milliseconds
+          example: "2024-01-15T14:30:00.234Z"
+        validationChecks:
+          type: array
+          description: Individual validation check results
+          items:
+            $ref: '#/components/schemas/ValidationCheck'
+
+    ValidationCheck:
+      type: object
+      required:
+        - check
+        - result
+      properties:
+        check:
+          type: string
+          description: Name of the validation check
+          example: "sufficient_credit"
+        result:
+          type: string
+          enum: ["pass", "fail"]
+          description: Check result
+          example: "pass"
+        details:
+          type: string
+          description: Additional details (typically for failures)
+          example: "Required: 3000.00, Available: 2549.25"
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - uptime
+        - checks
+      properties:
+        status:
+          type: string
+          enum: ["healthy", "unhealthy"]
+          description: Overall service health status
+          example: "healthy"
+        timestamp:
+          type: string
+          format: date-time
+          description: Health check timestamp
+          example: "2024-01-15T14:30:00.234Z"
+        uptime:
+          type: number
+          description: Service uptime in seconds
+          example: 3600.5
+        checks:
+          type: object
+          description: Individual component health checks
+          required:
+            - database
+            - redis
+          properties:
+            database:
+              type: string
+              enum: ["up", "down"]
+              description: Database connectivity status
+              example: "up"
+            redis:
+              type: string
+              enum: ["up", "down"]
+              description: Redis connectivity status
+              example: "up"
+
+    ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - message
+        - timestamp
+        - traceId
+      properties:
+        errorCode:
+          type: string
+          enum:
+            - VALIDATION_ERROR
+            - INVALID_REQUEST
+            - UNAUTHORIZED
+            - CARD_NOT_FOUND
+            - DATABASE_ERROR
+            - TIMEOUT_ERROR
+            - INTERNAL_ERROR
+          description: Error code
+          example: "VALIDATION_ERROR"
+        message:
+          type: string
+          description: Error message
+          example: "Validation failed"
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp
+          example: "2024-01-15T14:30:00.234Z"
+        traceId:
+          type: string
+          format: uuid
+          description: Trace ID for request tracking
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        details:
+          description: Additional error details (optional)
+          oneOf:
+            - type: string
+            - type: object
+            - type: array
+
+tags:
+  - name: Transaction Validation
+    description: Real-time transaction validation operations
+  - name: Health
+    description: Service health and readiness checks

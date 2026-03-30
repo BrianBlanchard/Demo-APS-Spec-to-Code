@@ -1,0 +1,496 @@
+openapi: 3.0.3
+info:
+  title: Card Issuance Service API
+  description: |
+    Card Issuance Service - Issues new payment cards with PCI-DSS compliant encryption.
+
+    This service handles the issuance of new payment cards linked to active accounts,
+    with AES-256 encryption for Primary Account Numbers (PAN) and comprehensive audit logging.
+  version: 1.0.0
+  contact:
+    name: Card Issuance Service Team
+    email: support@example.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: http://localhost:3000
+    description: Docker containerized environment
+  - url: https://dev.example.com
+    description: Development environment
+  - url: https://staging.example.com
+    description: Staging environment
+  - url: https://api.example.com
+    description: Production environment
+
+tags:
+  - name: Cards
+    description: Card issuance operations
+  - name: Health
+    description: Health check endpoints
+
+paths:
+  /:
+    get:
+      summary: Root endpoint
+      description: Returns service information
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                    example: Card Issuance Service
+                  version:
+                    type: string
+                    example: 1.0.0
+                  status:
+                    type: string
+                    example: running
+
+  /health/ready:
+    get:
+      summary: Readiness probe
+      description: Checks if the service is ready to accept requests (includes database health)
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthReadyResponse'
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthNotReadyResponse'
+
+  /health/live:
+    get:
+      summary: Liveness probe
+      description: Checks if the service is alive
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthLiveResponse'
+
+  /api/v1/cards:
+    post:
+      summary: Issue new card
+      description: |
+        Issues a new payment card linked to an active account.
+
+        **Business Rules:**
+        - Card number must be exactly 16 digits
+        - Card number must pass Luhn checksum validation
+        - Card number must be unique
+        - Account must exist and be in Active status
+        - Embossed name limited to 26 characters (card embossing limit)
+        - Expiration years typically 3, range 1-5
+
+        **Security:**
+        - Full PAN encrypted with AES-256 in GCM mode
+        - Only last 4 digits stored unencrypted
+        - PCI audit entry created for card creation
+        - Requires Bearer JWT with Operator+ role
+
+        **Rate Limiting:**
+        - 20 requests per minute per user
+      tags:
+        - Cards
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCardRequest'
+            examples:
+              basic:
+                summary: Basic card issuance
+                value:
+                  cardNumber: "4532015112830366"
+                  accountId: "12345678901"
+              withEmbossedName:
+                summary: Card with embossed name
+                value:
+                  cardNumber: "4532015112830366"
+                  accountId: "12345678901"
+                  embossedName: "JOHN SMITH"
+              withCustomExpiration:
+                summary: Card with custom expiration
+                value:
+                  cardNumber: "4532015112830366"
+                  accountId: "12345678901"
+                  embossedName: "JOHN SMITH"
+                  expirationYears: 5
+      responses:
+        '201':
+          description: Card issued successfully
+          headers:
+            Location:
+              description: URI of the created card resource
+              schema:
+                type: string
+                example: /api/v1/cards/5001
+            X-Trace-Id:
+              description: Trace ID for request tracking
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardResponse'
+              example:
+                id: 5001
+                cardNumber: "****-****-****-0366"
+                lastFourDigits: "0366"
+                accountId: "12345678901"
+                status: "Issued"
+                expirationDate: "2029-03-31"
+                embossedName: "JOHN SMITH"
+                createdAt: "2026-03-13T18:00:00Z"
+                updatedAt: "2026-03-13T18:00:00Z"
+        '400':
+          description: Bad Request - Validation errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidCardNumber:
+                  summary: Invalid card number length
+                  value:
+                    errorCode: VALIDATION_ERROR
+                    message: Card number must be exactly 16 digits
+                    timestamp: "2026-03-13T18:00:00Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+                failedLuhn:
+                  summary: Luhn checksum failed
+                  value:
+                    errorCode: VALIDATION_ERROR
+                    message: Invalid card number format (failed checksum validation)
+                    timestamp: "2026-03-13T18:00:00Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+                invalidEmbossedName:
+                  summary: Embossed name too long
+                  value:
+                    errorCode: VALIDATION_ERROR
+                    message: Embossed name exceeds 26 character limit
+                    timestamp: "2026-03-13T18:00:00Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '401':
+          description: Unauthorized - Invalid or missing JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: UNAUTHORIZED
+                message: Missing or invalid authorization header
+                timestamp: "2026-03-13T18:00:00Z"
+                traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '403':
+          description: Forbidden - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: FORBIDDEN
+                message: Insufficient permissions. Operator+ role required.
+                timestamp: "2026-03-13T18:00:00Z"
+                traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '404':
+          description: Not Found - Account does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: NOT_FOUND
+                message: Account 12345678901 does not exist
+                timestamp: "2026-03-13T18:00:00Z"
+                traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '409':
+          description: Conflict - Card number already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: CONFLICT
+                message: Card number already exists
+                timestamp: "2026-03-13T18:00:00Z"
+                traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '422':
+          description: Unprocessable Entity - Account not in Active status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                accountNotActive:
+                  summary: Account not Active
+                  value:
+                    errorCode: UNPROCESSABLE_ENTITY
+                    message: "Can only issue cards for Active accounts. Current status: Suspended"
+                    timestamp: "2026-03-13T18:00:00Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+                accountClosed:
+                  summary: Account closed
+                  value:
+                    errorCode: UNPROCESSABLE_ENTITY
+                    message: Cannot issue cards for closed accounts
+                    timestamp: "2026-03-13T18:00:00Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '429':
+          description: Rate Limit Exceeded
+          headers:
+            X-RateLimit-Limit:
+              schema:
+                type: integer
+              description: Maximum requests allowed per window
+            X-RateLimit-Remaining:
+              schema:
+                type: integer
+              description: Remaining requests in current window
+            X-RateLimit-Reset:
+              schema:
+                type: string
+                format: date-time
+              description: Time when rate limit resets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: RATE_LIMIT_EXCEEDED
+                message: Rate limit exceeded. Maximum 20 requests per 60 seconds.
+                timestamp: "2026-03-13T18:00:00Z"
+                traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '503':
+          description: Service Unavailable - Encryption service down
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: SERVICE_UNAVAILABLE
+                message: Encryption service unavailable
+                timestamp: "2026-03-13T18:00:00Z"
+                traceId: "550e8400-e29b-41d4-a716-446655440000"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token with Operator+ role required
+
+  schemas:
+    CreateCardRequest:
+      type: object
+      required:
+        - cardNumber
+        - accountId
+      properties:
+        cardNumber:
+          type: string
+          pattern: '^\d{16}$'
+          minLength: 16
+          maxLength: 16
+          description: 16-digit card number (must pass Luhn validation)
+          example: "4532015112830366"
+        accountId:
+          type: string
+          pattern: '^\d{11}$'
+          minLength: 11
+          maxLength: 11
+          description: 11-digit account ID
+          example: "12345678901"
+        embossedName:
+          type: string
+          maxLength: 26
+          pattern: '^[A-Z0-9 -]*$'
+          description: Name to be embossed on card (A-Z, 0-9, space, hyphen only)
+          example: "JOHN SMITH"
+        expirationYears:
+          type: integer
+          minimum: 1
+          maximum: 5
+          default: 3
+          description: Years until card expiration
+          example: 3
+
+    CardResponse:
+      type: object
+      required:
+        - id
+        - cardNumber
+        - lastFourDigits
+        - accountId
+        - status
+        - expirationDate
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Internal card ID
+          example: 5001
+        cardNumber:
+          type: string
+          description: Masked card number (only last 4 visible)
+          pattern: '^\*{4}-\*{4}-\*{4}-\d{4}$'
+          example: "****-****-****-0366"
+        lastFourDigits:
+          type: string
+          minLength: 4
+          maxLength: 4
+          description: Last 4 digits of card number
+          example: "0366"
+        accountId:
+          type: string
+          description: Owning account ID
+          example: "12345678901"
+        status:
+          type: string
+          enum:
+            - Issued
+            - Active
+            - Suspended
+            - Closed
+          description: Card status
+          example: "Issued"
+        expirationDate:
+          type: string
+          format: date
+          description: Card expiration date (YYYY-MM-DD)
+          example: "2029-03-31"
+        embossedName:
+          type: string
+          description: Name embossed on card
+          example: "JOHN SMITH"
+        createdAt:
+          type: string
+          format: date-time
+          description: Card creation timestamp (ISO 8601)
+          example: "2026-03-13T18:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp (ISO 8601)
+          example: "2026-03-13T18:00:00Z"
+
+    ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - message
+        - timestamp
+        - traceId
+      properties:
+        errorCode:
+          type: string
+          description: Machine-readable error code
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          description: Human-readable error message
+          example: Card number must be exactly 16 digits
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp (ISO 8601)
+          example: "2026-03-13T18:00:00Z"
+        traceId:
+          type: string
+          format: uuid
+          description: Trace ID for request tracking
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+    HealthReadyResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - checks
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+          example: ready
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-03-13T18:00:00Z"
+        checks:
+          type: object
+          properties:
+            database:
+              type: string
+              enum:
+                - healthy
+                - unhealthy
+              example: healthy
+
+    HealthNotReadyResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum:
+            - not ready
+          example: not ready
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-03-13T18:00:00Z"
+        checks:
+          type: object
+          properties:
+            database:
+              type: string
+              example: unhealthy
+        error:
+          type: string
+          example: Health check failed
+
+    HealthLiveResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum:
+            - alive
+          example: alive
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-03-13T18:00:00Z"

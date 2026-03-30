@@ -1,0 +1,423 @@
+openapi: 3.0.3
+info:
+  title: SMS Notification Service API
+  description: |
+    SMS Notification Service for delivering critical and time-sensitive notifications including fraud alerts,
+    large transaction confirmations, OTP codes for multi-factor authentication, and urgent account status changes.
+
+    ## Features
+    - Send SMS messages reliably via Twilio
+    - Support OTP generation and delivery
+    - Track SMS delivery status
+    - Respect customer SMS preferences
+    - Handle international phone numbers (E.164 format)
+    - Queue critical messages for priority delivery
+
+    ## Business Flow
+    The service validates phone numbers, checks customer preferences, sends via Twilio API,
+    logs delivery status, and handles delivery receipts with automatic retry logic.
+  version: 1.0.0
+  contact:
+    name: SMS Notification Service Team
+  x-environment: development
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: http://localhost:3000
+    description: Docker containerized environment
+  - url: https://dev.example.com
+    description: Development environment
+  - url: https://staging.example.com
+    description: Staging environment
+  - url: https://api.example.com
+    description: Production environment
+
+tags:
+  - name: Notifications
+    description: SMS notification operations
+  - name: Health
+    description: Service health and readiness checks
+
+paths:
+  /api/v1/notifications/sms:
+    post:
+      tags:
+        - Notifications
+      summary: Send SMS notification
+      description: |
+        Sends an SMS notification to a customer's phone number. The service validates the phone number format,
+        checks customer SMS preferences, sends via Twilio API, and logs delivery status.
+
+        **Edge Cases:**
+        - SMS delivery failure: Retries once, falls back to email if configured
+        - Customer opted out: Skips SMS, sends email instead, logs preference
+        - Invalid phone number: Returns 400 Bad Request
+        - Twilio API unavailable: Queues message for retry
+      operationId: sendSms
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendSmsRequest'
+            examples:
+              fraudAlert:
+                summary: Fraud Alert
+                value:
+                  to: "+13125550123"
+                  messageType: "fraud_alert"
+                  message: "ALERT: Large transaction of $1,250.00 detected. Reply Y to confirm or N to report fraud."
+                  priority: "critical"
+              otp:
+                summary: OTP Code
+                value:
+                  to: "+14155552345"
+                  messageType: "otp"
+                  message: "Your verification code is 123456. Valid for 5 minutes."
+                  priority: "high"
+              transactionConfirmation:
+                summary: Transaction Confirmation
+                value:
+                  to: "+12025559876"
+                  messageType: "transaction_confirmation"
+                  message: "Transaction of $500.00 approved. Reference: TXN-2024-ABC123"
+                  priority: "medium"
+      responses:
+        '200':
+          description: SMS sent successfully
+          headers:
+            X-Trace-Id:
+              description: Unique trace identifier for request tracking
+              schema:
+                type: string
+                example: "550e8400-e29b-41d4-a716-446655440000"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendSmsResponse'
+              examples:
+                success:
+                  summary: Successful SMS delivery
+                  value:
+                    notificationId: "SMS-20240115-ABC456"
+                    status: "sent"
+                    sentAt: "2024-01-15T14:30:02Z"
+                    messageId: "SM1234567890abcdef"
+        '400':
+          description: Bad request - validation error or customer opted out
+          headers:
+            X-Trace-Id:
+              description: Unique trace identifier for request tracking
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                validationError:
+                  summary: Invalid phone number format
+                  value:
+                    errorCode: "VALIDATION_ERROR"
+                    message: "to: Phone number must be in E.164 format (e.g., +13125550123)"
+                    timestamp: "2024-01-15T14:30:02Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+                optedOut:
+                  summary: Customer opted out
+                  value:
+                    errorCode: "CUSTOMER_OPTED_OUT"
+                    message: "Customer has opted out of SMS notifications. Email fallback may be used if configured."
+                    timestamp: "2024-01-15T14:30:02Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440001"
+        '500':
+          description: Internal server error - SMS delivery failed
+          headers:
+            X-Trace-Id:
+              description: Unique trace identifier for request tracking
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                deliveryError:
+                  summary: SMS delivery failure
+                  value:
+                    errorCode: "SMS_DELIVERY_ERROR"
+                    message: "Failed to send SMS after 2 attempts. Email fallback may be used if configured."
+                    timestamp: "2024-01-15T14:30:02Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440002"
+        '503':
+          description: Service unavailable - Twilio API error
+          headers:
+            X-Trace-Id:
+              description: Unique trace identifier for request tracking
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                twilioError:
+                  summary: Twilio API unavailable
+                  value:
+                    errorCode: "TWILIO_API_ERROR"
+                    message: "Failed to send SMS via Twilio: Service temporarily unavailable"
+                    timestamp: "2024-01-15T14:30:02Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440003"
+
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: |
+        Checks if the application is running. Used by container orchestration systems
+        to determine if the container should be restarted.
+      operationId: getLiveness
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LivenessResponse'
+              example:
+                status: "UP"
+                timestamp: "2024-01-15T14:30:02Z"
+                service: "sms-notification-service"
+
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe
+      description: |
+        Checks if the application is ready to accept traffic. Validates database connectivity
+        and other critical dependencies. Used by load balancers and orchestration systems.
+      operationId: getReadiness
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: "READY"
+                timestamp: "2024-01-15T14:30:02Z"
+                service: "sms-notification-service"
+                checks:
+                  database: "UP"
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: "NOT_READY"
+                timestamp: "2024-01-15T14:30:02Z"
+                service: "sms-notification-service"
+                checks:
+                  database: "DOWN"
+
+  /v1/sms-notification/health:
+    get:
+      tags:
+        - Health
+      summary: General health check
+      description: Returns the overall health status and version of the service
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service health information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "healthy"
+                timestamp: "2024-01-15T14:30:02Z"
+                service: "sms-notification-service"
+                version: "1.0.0"
+
+components:
+  schemas:
+    SendSmsRequest:
+      type: object
+      required:
+        - to
+        - messageType
+        - message
+        - priority
+      properties:
+        to:
+          type: string
+          pattern: '^\+[1-9]\d{1,14}$'
+          description: Phone number in E.164 format (e.g., +13125550123)
+          example: "+13125550123"
+        messageType:
+          type: string
+          enum:
+            - fraud_alert
+            - otp
+            - transaction_confirmation
+            - account_status
+          description: Type of SMS notification
+          example: "fraud_alert"
+        message:
+          type: string
+          minLength: 1
+          maxLength: 1600
+          description: SMS message content (max 1600 characters)
+          example: "ALERT: Large transaction of $1,250.00 detected. Reply Y to confirm or N to report fraud."
+        priority:
+          type: string
+          enum:
+            - critical
+            - high
+            - medium
+            - low
+          description: Message priority level
+          example: "critical"
+
+    SendSmsResponse:
+      type: object
+      required:
+        - notificationId
+        - status
+        - sentAt
+        - messageId
+      properties:
+        notificationId:
+          type: string
+          pattern: '^SMS-\d{8}-[A-Z0-9]{6}$'
+          description: Unique notification identifier (format SMS-YYYYMMDD-XXXXXX)
+          example: "SMS-20240115-ABC456"
+        status:
+          type: string
+          enum:
+            - sent
+            - failed
+            - queued
+            - opted_out
+          description: SMS delivery status
+          example: "sent"
+        sentAt:
+          type: string
+          format: date-time
+          description: Timestamp when SMS was sent (ISO8601 format)
+          example: "2024-01-15T14:30:02Z"
+        messageId:
+          type: string
+          description: Twilio message SID
+          example: "SM1234567890abcdef"
+
+    ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - message
+        - timestamp
+        - traceId
+      properties:
+        errorCode:
+          type: string
+          description: Machine-readable error code
+          example: "VALIDATION_ERROR"
+          enum:
+            - VALIDATION_ERROR
+            - CUSTOMER_OPTED_OUT
+            - SMS_DELIVERY_ERROR
+            - TWILIO_API_ERROR
+            - INTERNAL_SERVER_ERROR
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Phone number must be in E.164 format"
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp (ISO8601 format)
+          example: "2024-01-15T14:30:02Z"
+        traceId:
+          type: string
+          description: Unique trace identifier for debugging
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+    LivenessResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - service
+      properties:
+        status:
+          type: string
+          enum:
+            - UP
+          example: "UP"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T14:30:02Z"
+        service:
+          type: string
+          example: "sms-notification-service"
+
+    ReadinessResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - service
+        - checks
+      properties:
+        status:
+          type: string
+          enum:
+            - READY
+            - NOT_READY
+          example: "READY"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T14:30:02Z"
+        service:
+          type: string
+          example: "sms-notification-service"
+        checks:
+          type: object
+          properties:
+            database:
+              type: string
+              enum:
+                - UP
+                - DOWN
+              example: "UP"
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - service
+        - version
+      properties:
+        status:
+          type: string
+          example: "healthy"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T14:30:02Z"
+        service:
+          type: string
+          example: "sms-notification-service"
+        version:
+          type: string
+          example: "1.0.0"

@@ -1,0 +1,380 @@
+openapi: 3.0.3
+info:
+  title: Email Notification Service API
+  description: |
+    Email Notification Service delivers transactional emails for customer-facing events including
+    payment confirmations, transaction alerts, card status changes, and monthly statements.
+    Supports templated emails with personalization and tracks delivery status for compliance.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: http://localhost:3000
+    description: Docker containerized environment
+  - url: https://api-dev.example.com
+    description: Development environment
+  - url: https://api-staging.example.com
+    description: Staging environment
+  - url: https://api.example.com
+    description: Production environment
+
+tags:
+  - name: Email Notifications
+    description: Email notification operations
+  - name: Health
+    description: Health check endpoints
+
+paths:
+  /api/v1/notifications/email:
+    post:
+      tags:
+        - Email Notifications
+      summary: Send email notification
+      description: |
+        Sends a transactional email using a template. Validates the email address,
+        retrieves the template, populates it with data, and sends via SendGrid.
+        Includes automatic retry logic (up to 3 attempts) on failure.
+      operationId: sendEmail
+      parameters:
+        - name: X-Trace-Id
+          in: header
+          description: Optional trace ID for request tracking
+          required: false
+          schema:
+            type: string
+            example: "a1b2c3d4e5f6g7h8"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendEmailRequest'
+            examples:
+              paymentConfirmation:
+                summary: Payment confirmation email
+                value:
+                  to: "customer@example.com"
+                  templateId: "payment_confirmation"
+                  templateData:
+                    customerName: "John Anderson"
+                    paymentAmount: 2450.75
+                    confirmationNumber: "PAY-20240115-ABC123"
+                    paymentDate: "2024-01-15"
+                  priority: "high"
+              transactionAlert:
+                summary: Transaction alert email
+                value:
+                  to: "customer@example.com"
+                  templateId: "transaction_alert"
+                  templateData:
+                    customerName: "Jane Doe"
+                    transactionAmount: 150.00
+                    transactionDate: "2024-01-20"
+                  priority: "normal"
+      responses:
+        '200':
+          description: Email sent successfully
+          headers:
+            X-Trace-Id:
+              description: Trace ID for request tracking
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendEmailResponse'
+              examples:
+                success:
+                  summary: Successful email delivery
+                  value:
+                    notificationId: "EMAIL-20240327-A1B2C3D4"
+                    status: "sent"
+                    sentAt: "2024-03-27T14:30:05Z"
+        '400':
+          description: Bad request - validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                validationError:
+                  summary: Invalid email format
+                  value:
+                    errorCode: "VALIDATION_ERROR"
+                    message: "to: Invalid email format"
+                    timestamp: "2024-03-27T14:30:05Z"
+                    traceId: "a1b2c3d4e5f6g7h8"
+                missingFields:
+                  summary: Missing template fields
+                  value:
+                    errorCode: "MISSING_TEMPLATE_FIELDS"
+                    message: "Missing required template fields: customerName, paymentAmount"
+                    timestamp: "2024-03-27T14:30:05Z"
+                    traceId: "a1b2c3d4e5f6g7h8"
+        '404':
+          description: Template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                templateNotFound:
+                  summary: Template does not exist
+                  value:
+                    errorCode: "TEMPLATE_NOT_FOUND"
+                    message: "Template with ID 'invalid_template' not found"
+                    timestamp: "2024-03-27T14:30:05Z"
+                    traceId: "a1b2c3d4e5f6g7h8"
+        '500':
+          description: Internal server error - email delivery failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                deliveryFailed:
+                  summary: Email delivery failed after retries
+                  value:
+                    errorCode: "EMAIL_DELIVERY_FAILED"
+                    message: "Failed to send email after 3 attempts"
+                    timestamp: "2024-03-27T14:30:05Z"
+                    traceId: "a1b2c3d4e5f6g7h8"
+        '502':
+          description: Bad gateway - external service error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                sendgridError:
+                  summary: SendGrid API error
+                  value:
+                    errorCode: "SENDGRID_ERROR"
+                    message: "Failed to send email: SendGrid API unavailable"
+                    timestamp: "2024-03-27T14:30:05Z"
+                    traceId: "a1b2c3d4e5f6g7h8"
+
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: Checks if the application is running (Kubernetes liveness probe)
+      operationId: getLiveness
+      responses:
+        '200':
+          description: Application is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "UP"
+                timestamp: "2024-03-27T14:30:05Z"
+
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe
+      description: Checks if the application is ready to accept traffic (Kubernetes readiness probe)
+      operationId: getReadiness
+      responses:
+        '200':
+          description: Application is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: "UP"
+                timestamp: "2024-03-27T14:30:05Z"
+                checks:
+                  database: "UP"
+        '503':
+          description: Application is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: "DOWN"
+                timestamp: "2024-03-27T14:30:05Z"
+                checks:
+                  database: "DOWN"
+                error: "Database connection failed"
+
+  /:
+    get:
+      tags:
+        - Health
+      summary: Root endpoint
+      description: Basic service information
+      operationId: getRoot
+      responses:
+        '200':
+          description: Service information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                  version:
+                    type: string
+                  status:
+                    type: string
+              example:
+                service: "Email Notification Service"
+                version: "1.0.0"
+                status: "UP"
+
+components:
+  schemas:
+    SendEmailRequest:
+      type: object
+      required:
+        - to
+        - templateId
+        - templateData
+      properties:
+        to:
+          type: string
+          format: email
+          description: Recipient email address
+          example: "customer@example.com"
+        templateId:
+          type: string
+          minLength: 1
+          description: Email template identifier
+          example: "payment_confirmation"
+          enum:
+            - payment_confirmation
+            - transaction_alert
+        templateData:
+          type: object
+          description: Template variables for personalization
+          additionalProperties: true
+          example:
+            customerName: "John Anderson"
+            paymentAmount: 2450.75
+            confirmationNumber: "PAY-20240115-ABC123"
+            paymentDate: "2024-01-15"
+        priority:
+          type: string
+          enum:
+            - high
+            - normal
+            - low
+          default: normal
+          description: Email priority level
+          example: "high"
+
+    SendEmailResponse:
+      type: object
+      required:
+        - notificationId
+        - status
+        - sentAt
+      properties:
+        notificationId:
+          type: string
+          description: Unique notification identifier
+          example: "EMAIL-20240327-A1B2C3D4"
+        status:
+          type: string
+          enum:
+            - sent
+            - failed
+            - queued
+            - retrying
+          description: Email delivery status
+          example: "sent"
+        sentAt:
+          type: string
+          format: date-time
+          description: Timestamp when email was sent (ISO 8601)
+          example: "2024-03-27T14:30:05Z"
+
+    ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - message
+        - timestamp
+      properties:
+        errorCode:
+          type: string
+          description: Machine-readable error code
+          example: "VALIDATION_ERROR"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Invalid email format"
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp (ISO 8601)
+          example: "2024-03-27T14:30:05Z"
+        traceId:
+          type: string
+          description: Request trace ID for debugging
+          example: "a1b2c3d4e5f6g7h8"
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum:
+            - UP
+            - DOWN
+          description: Health status
+          example: "UP"
+        timestamp:
+          type: string
+          format: date-time
+          description: Health check timestamp (ISO 8601)
+          example: "2024-03-27T14:30:05Z"
+
+    ReadinessResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - checks
+      properties:
+        status:
+          type: string
+          enum:
+            - UP
+            - DOWN
+          description: Overall readiness status
+          example: "UP"
+        timestamp:
+          type: string
+          format: date-time
+          description: Readiness check timestamp (ISO 8601)
+          example: "2024-03-27T14:30:05Z"
+        checks:
+          type: object
+          description: Individual component health checks
+          properties:
+            database:
+              type: string
+              enum:
+                - UP
+                - DOWN
+              example: "UP"
+        error:
+          type: string
+          description: Error message if status is DOWN
+          example: "Database connection failed"

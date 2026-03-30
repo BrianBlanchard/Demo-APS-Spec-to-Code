@@ -1,0 +1,585 @@
+openapi: 3.0.3
+info:
+  title: Transaction Search Service API
+  version: 1.0.0
+  description: |
+    Transaction Search Service enables customers, customer service representatives, and administrators
+    to search and retrieve transaction history with flexible filtering options. Supports account
+    reconciliation, dispute investigation, spending analysis, and customer self-service transaction lookup.
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: http://localhost:3000
+    description: Docker containerized environment
+  - url: https://dev-api.example.com
+    description: Development environment
+  - url: https://staging-api.example.com
+    description: Staging environment
+  - url: https://api.example.com
+    description: Production environment
+
+tags:
+  - name: Transactions
+    description: Transaction search operations
+  - name: Health
+    description: Service health and readiness checks
+
+paths:
+  /api/v1/transactions/search:
+    post:
+      tags:
+        - Transactions
+      summary: Search transactions
+      description: |
+        Search and retrieve transaction history with flexible filtering options.
+        Supports date range, amount range, merchant search, and pagination.
+      operationId: searchTransactions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionSearchRequest'
+            examples:
+              accountSearch:
+                summary: Search by account ID and date range
+                value:
+                  accountId: "12345678901"
+                  dateRange:
+                    startDate: "2024-01-01"
+                    endDate: "2024-01-31"
+                  sortBy: "date"
+                  sortOrder: "desc"
+                  pagination:
+                    page: 1
+                    pageSize: 50
+              merchantSearch:
+                summary: Search by merchant name
+                value:
+                  accountId: "12345678901"
+                  merchantName: "AMAZON"
+                  pagination:
+                    page: 1
+                    pageSize: 20
+              amountRangeSearch:
+                summary: Search by amount range
+                value:
+                  cardNumber: "1234567890123456"
+                  amountRange:
+                    min: 100.00
+                    max: 500.00
+                  pagination:
+                    page: 1
+                    pageSize: 50
+      responses:
+        '200':
+          description: Successful search with results
+          headers:
+            x-trace-id:
+              description: Correlation ID for request tracing
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionSearchResponse'
+              examples:
+                successfulSearch:
+                  summary: Successful search with results
+                  value:
+                    results:
+                      - transactionId: "1234567890123456"
+                        accountId: "12345678901"
+                        cardNumber: "************1234"
+                        transactionType: "01"
+                        transactionTypeName: "Purchase"
+                        transactionCategory: "5411"
+                        amount: 125.50
+                        description: "AMAZON.COM PURCHASE"
+                        merchantName: "AMAZON.COM"
+                        merchantCity: "Seattle"
+                        originalTimestamp: "2024-01-15T14:30:00Z"
+                        postedTimestamp: "2024-01-15T14:30:05Z"
+                        status: "posted"
+                    pagination:
+                      currentPage: 1
+                      pageSize: 50
+                      totalResults: 127
+                      totalPages: 3
+                    searchMetadata:
+                      executionTimeMs: 85
+                      appliedFilters: ["dateRange", "accountId"]
+                      sortedBy: "date"
+                      sortOrder: "desc"
+        '400':
+          description: Bad request - Invalid search criteria or no criteria provided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                noCriteria:
+                  summary: No search criteria provided
+                  value:
+                    errorCode: "VALIDATION_ERROR"
+                    message: "At least one search criterion required (accountId, cardNumber, or dateRange)"
+                    timestamp: "2024-01-15T14:30:00Z"
+                    traceId: "123e4567-e89b-12d3-a456-426614174000"
+                invalidDateRange:
+                  summary: Invalid date range
+                  value:
+                    errorCode: "VALIDATION_ERROR"
+                    message: "dateRange.startDate: startDate must be less than or equal to endDate"
+                    timestamp: "2024-01-15T14:30:00Z"
+                    traceId: "123e4567-e89b-12d3-a456-426614174000"
+        '401':
+          description: Unauthorized - Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "UNAUTHORIZED"
+                message: "Authentication required"
+                timestamp: "2024-01-15T14:30:00Z"
+                traceId: "123e4567-e89b-12d3-a456-426614174000"
+        '403':
+          description: Forbidden - User cannot access specified account or card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "FORBIDDEN"
+                message: "Access denied to specified account"
+                timestamp: "2024-01-15T14:30:00Z"
+                traceId: "123e4567-e89b-12d3-a456-426614174000"
+        '422':
+          description: Unprocessable entity - Invalid date or amount range
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "VALIDATION_ERROR"
+                message: "Invalid date range or amount range"
+                timestamp: "2024-01-15T14:30:00Z"
+                traceId: "123e4567-e89b-12d3-a456-426614174000"
+        '500':
+          description: Internal server error - Database or Elasticsearch unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "SEARCH_ERROR"
+                message: "An error occurred while searching transactions"
+                timestamp: "2024-01-15T14:30:00Z"
+                traceId: "123e4567-e89b-12d3-a456-426614174000"
+      security:
+        - BearerAuth: []
+
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness check
+      description: |
+        Checks if the service is ready to accept requests.
+        Verifies database connectivity and other critical dependencies.
+      operationId: readinessCheck
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: "ready"
+                timestamp: "2024-01-15T14:30:00Z"
+                checks:
+                  database: "healthy"
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: "not ready"
+                timestamp: "2024-01-15T14:30:00Z"
+                checks:
+                  database: "unhealthy"
+
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness check
+      description: |
+        Checks if the service is alive and running.
+        Does not verify external dependencies.
+      operationId: livenessCheck
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LivenessResponse'
+              example:
+                status: "alive"
+                timestamp: "2024-01-15T14:30:00Z"
+
+  /v1/transaction-search/health:
+    get:
+      tags:
+        - Health
+      summary: Service health status
+      description: General health status endpoint with service information
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service health information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "healthy"
+                service: "transaction-search-service"
+                version: "1.0.0"
+                timestamp: "2024-01-15T14:30:00Z"
+
+components:
+  schemas:
+    TransactionSearchRequest:
+      type: object
+      required:
+        - pagination
+      properties:
+        accountId:
+          type: string
+          minLength: 11
+          maxLength: 11
+          description: Account identifier to search
+          example: "12345678901"
+        cardNumber:
+          type: string
+          minLength: 16
+          maxLength: 16
+          description: Card number to search
+          example: "1234567890123456"
+        dateRange:
+          $ref: '#/components/schemas/DateRange'
+        amountRange:
+          $ref: '#/components/schemas/AmountRange'
+        transactionTypes:
+          type: array
+          items:
+            type: string
+          description: Transaction type codes to filter (01=Purchase, 02=Withdrawal, etc.)
+          example: ["01", "04"]
+        merchantName:
+          type: string
+          description: Merchant name for partial/fuzzy matching
+          example: "AMAZON"
+        sortBy:
+          type: string
+          enum: [date, amount]
+          default: date
+          description: Field to sort results by
+        sortOrder:
+          type: string
+          enum: [asc, desc]
+          default: desc
+          description: Sort direction
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    DateRange:
+      type: object
+      required:
+        - startDate
+        - endDate
+      properties:
+        startDate:
+          type: string
+          format: date
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          description: Start date in YYYY-MM-DD format
+          example: "2024-01-01"
+        endDate:
+          type: string
+          format: date
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          description: End date in YYYY-MM-DD format (must be >= startDate)
+          example: "2024-01-31"
+
+    AmountRange:
+      type: object
+      required:
+        - min
+        - max
+      properties:
+        min:
+          type: number
+          format: double
+          minimum: 0
+          description: Minimum transaction amount
+          example: 100.00
+        max:
+          type: number
+          format: double
+          minimum: 0
+          description: Maximum transaction amount (must be >= min)
+          example: 500.00
+
+    Pagination:
+      type: object
+      required:
+        - page
+        - pageSize
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          description: Page number (1-indexed)
+          example: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: Number of results per page (1-100)
+          example: 50
+
+    Transaction:
+      type: object
+      properties:
+        transactionId:
+          type: string
+          minLength: 16
+          maxLength: 16
+          description: Unique transaction identifier
+          example: "1234567890123456"
+        accountId:
+          type: string
+          description: Account identifier
+          example: "12345678901"
+        cardNumber:
+          type: string
+          description: Masked card number
+          example: "************1234"
+        transactionType:
+          type: string
+          description: Transaction type code
+          example: "01"
+        transactionTypeName:
+          type: string
+          description: Human-readable transaction type
+          example: "Purchase"
+        transactionCategory:
+          type: string
+          description: Merchant category code
+          example: "5411"
+        amount:
+          type: number
+          format: double
+          description: Transaction amount
+          example: 125.50
+        description:
+          type: string
+          description: Transaction description
+          example: "AMAZON.COM PURCHASE"
+        merchantName:
+          type: string
+          description: Merchant name
+          example: "AMAZON.COM"
+        merchantCity:
+          type: string
+          description: Merchant city
+          example: "Seattle"
+        originalTimestamp:
+          type: string
+          format: date-time
+          description: Original transaction timestamp
+          example: "2024-01-15T14:30:00Z"
+        postedTimestamp:
+          type: string
+          format: date-time
+          description: Posted transaction timestamp
+          example: "2024-01-15T14:30:05Z"
+        status:
+          type: string
+          description: Transaction status
+          example: "posted"
+
+    TransactionSearchResponse:
+      type: object
+      required:
+        - results
+        - pagination
+        - searchMetadata
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+          description: Array of matching transactions
+        pagination:
+          $ref: '#/components/schemas/PaginationMetadata'
+        searchMetadata:
+          $ref: '#/components/schemas/SearchMetadata'
+
+    PaginationMetadata:
+      type: object
+      required:
+        - currentPage
+        - pageSize
+        - totalResults
+        - totalPages
+      properties:
+        currentPage:
+          type: integer
+          description: Current page number
+          example: 1
+        pageSize:
+          type: integer
+          description: Results per page
+          example: 50
+        totalResults:
+          type: integer
+          description: Total number of matching results
+          example: 127
+        totalPages:
+          type: integer
+          description: Total number of pages
+          example: 3
+
+    SearchMetadata:
+      type: object
+      required:
+        - executionTimeMs
+        - appliedFilters
+        - sortedBy
+        - sortOrder
+      properties:
+        executionTimeMs:
+          type: integer
+          description: Search execution time in milliseconds
+          example: 85
+        appliedFilters:
+          type: array
+          items:
+            type: string
+          description: List of filters applied to the search
+          example: ["dateRange", "accountId"]
+        sortedBy:
+          type: string
+          description: Field used for sorting
+          example: "date"
+        sortOrder:
+          type: string
+          description: Sort direction applied
+          example: "desc"
+
+    ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - message
+        - timestamp
+        - traceId
+      properties:
+        errorCode:
+          type: string
+          description: Machine-readable error code
+          example: "VALIDATION_ERROR"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "At least one search criterion required"
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp
+          example: "2024-01-15T14:30:00Z"
+        traceId:
+          type: string
+          format: uuid
+          description: Request correlation ID for tracing
+          example: "123e4567-e89b-12d3-a456-426614174000"
+
+    ReadinessResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - checks
+      properties:
+        status:
+          type: string
+          enum: [ready, not ready]
+          description: Overall readiness status
+        timestamp:
+          type: string
+          format: date-time
+          description: Check timestamp
+        checks:
+          type: object
+          properties:
+            database:
+              type: string
+              enum: [healthy, unhealthy]
+              description: Database connectivity status
+
+    LivenessResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: [alive]
+          description: Liveness status
+        timestamp:
+          type: string
+          format: date-time
+          description: Check timestamp
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - service
+        - version
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: [healthy]
+          description: Health status
+        service:
+          type: string
+          description: Service name
+        version:
+          type: string
+          description: Service version
+        timestamp:
+          type: string
+          format: date-time
+          description: Check timestamp
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for authentication (passed in Authorization header)

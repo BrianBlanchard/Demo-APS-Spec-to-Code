@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: customer-registration-db
+    environment:
+      POSTGRES_DB: customer_registration
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - customer-registration-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: customer-registration-app
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: customer_registration
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_POOL_MIN: 2
+      DB_POOL_MAX: 10
+      ENCRYPTION_KEY: your-encryption-key-here
+      JWT_SECRET: your-jwt-secret-here
+      CREDIT_BUREAU_API_URL: https://api.creditbureau.com
+      CREDIT_BUREAU_API_KEY: your-api-key-here
+      CREDIT_BUREAU_TIMEOUT: 5000
+      LOG_LEVEL: info
+      CORS_ORIGIN: "*"
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - customer-registration-network
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+
+networks:
+  customer-registration-network:
+    driver: bridge

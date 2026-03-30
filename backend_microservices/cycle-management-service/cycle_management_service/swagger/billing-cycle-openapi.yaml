@@ -1,0 +1,352 @@
+openapi: 3.0.3
+info:
+  title: Billing Cycle Management Service
+  version: 1.0.0
+  description: |
+    Manages monthly billing cycle operations including resetting current cycle credit and debit counters to zero at cycle end,
+    archiving cycle data for statement generation, and coordinating interest calculation and statement production processes.
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+  - url: http://localhost:3000
+    description: Docker containerized (local)
+  - url: https://dev.example.com
+    description: Development environment
+  - url: https://staging.example.com
+    description: Staging environment
+  - url: https://api.example.com
+    description: Production environment
+
+paths:
+  /api/v1/billing/cycle/close:
+    post:
+      summary: Close billing cycle
+      description: |
+        Closes the current billing cycle for all active accounts. This operation:
+        - Archives current cycle credits and debits
+        - Calculates interest charges based on debit balance
+        - Assesses applicable fees
+        - Resets current_cycle_credit and current_cycle_debit to 0.00
+        - Triggers statement generation for all processed accounts
+      operationId: closeBillingCycle
+      tags:
+        - Billing Cycle
+      parameters:
+        - name: x-trace-id
+          in: header
+          description: Trace ID for request tracking
+          required: false
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CloseCycleRequest'
+            examples:
+              standard:
+                summary: Standard cycle close
+                value:
+                  billingCycleEnd: "2024-01-31"
+                  processingDate: "2024-02-01"
+              midCycle:
+                summary: Mid-cycle close (edge case)
+                value:
+                  billingCycleEnd: "2024-01-15"
+                  processingDate: "2024-01-16"
+      responses:
+        '200':
+          description: Cycle closed successfully
+          headers:
+            x-trace-id:
+              description: Trace ID for request tracking
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CloseCycleResponse'
+              examples:
+                success:
+                  summary: Successful cycle close
+                  value:
+                    billingCycle: "2024-01"
+                    accountsProcessed: 10543
+                    totalInterestCharged: 125437.89
+                    totalFeesCharged: 34521.00
+                    statementsGenerated: 10543
+        '400':
+          description: Bad request - validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                validationError:
+                  summary: Invalid date format
+                  value:
+                    errorCode: "VALIDATION_ERROR"
+                    message: "Request validation failed"
+                    timestamp: "2024-02-01T10:00:00.000Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+                    details:
+                      - path: ["billingCycleEnd"]
+                        message: "Invalid date format. Expected YYYY-MM-DD"
+        '422':
+          description: Business logic error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                noActiveAccounts:
+                  summary: No active accounts found
+                  value:
+                    errorCode: "NO_ACTIVE_ACCOUNTS"
+                    message: "No active accounts found for cycle closure"
+                    timestamp: "2024-02-01T10:00:00.000Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                databaseError:
+                  summary: Database connection failed
+                  value:
+                    errorCode: "DATABASE_ERROR"
+                    message: "Failed to fetch active accounts"
+                    timestamp: "2024-02-01T10:00:00.000Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+
+  /health/ready:
+    get:
+      summary: Readiness check
+      description: Check if the service is ready to accept traffic (includes database connectivity)
+      operationId: healthReady
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                ready:
+                  summary: Service ready
+                  value:
+                    status: "OK"
+                    timestamp: "2024-02-01T10:00:00.000Z"
+                    service: "billing-cycle-management-service"
+                    version: "1.0.0"
+                    uptime: 3600
+                    database:
+                      connected: true
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                notReady:
+                  summary: Database not connected
+                  value:
+                    status: "ERROR"
+                    timestamp: "2024-02-01T10:00:00.000Z"
+                    service: "billing-cycle-management-service"
+                    version: "1.0.0"
+                    uptime: 3600
+                    database:
+                      connected: false
+
+  /health/live:
+    get:
+      summary: Liveness check
+      description: Check if the service is alive (lightweight check)
+      operationId: healthLive
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                alive:
+                  summary: Service alive
+                  value:
+                    status: "OK"
+                    timestamp: "2024-02-01T10:00:00.000Z"
+                    service: "billing-cycle-management-service"
+                    version: "1.0.0"
+                    uptime: 3600
+
+  /v1/billing/health:
+    get:
+      summary: Alternative health check endpoint
+      description: Alternative health check following /v1/{capability}/health pattern
+      operationId: billingHealthCheck
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+components:
+  schemas:
+    CloseCycleRequest:
+      type: object
+      required:
+        - billingCycleEnd
+        - processingDate
+      properties:
+        billingCycleEnd:
+          type: string
+          format: date
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          description: The last day of the billing cycle (YYYY-MM-DD)
+          example: "2024-01-31"
+        processingDate:
+          type: string
+          format: date
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          description: The date when cycle closure is processed (YYYY-MM-DD)
+          example: "2024-02-01"
+
+    CloseCycleResponse:
+      type: object
+      required:
+        - billingCycle
+        - accountsProcessed
+        - totalInterestCharged
+        - totalFeesCharged
+        - statementsGenerated
+      properties:
+        billingCycle:
+          type: string
+          pattern: '^\d{4}-\d{2}$'
+          description: Billing cycle identifier in YYYY-MM format
+          example: "2024-01"
+        accountsProcessed:
+          type: integer
+          minimum: 0
+          description: Number of accounts successfully processed
+          example: 10543
+        totalInterestCharged:
+          type: number
+          format: double
+          minimum: 0
+          description: Total interest charges across all accounts
+          example: 125437.89
+        totalFeesCharged:
+          type: number
+          format: double
+          minimum: 0
+          description: Total fees assessed across all accounts
+          example: 34521.00
+        statementsGenerated:
+          type: integer
+          minimum: 0
+          description: Number of statements generated
+          example: 10543
+
+    ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - message
+        - timestamp
+      properties:
+        errorCode:
+          type: string
+          description: Application-specific error code
+          example: "VALIDATION_ERROR"
+          enum:
+            - VALIDATION_ERROR
+            - DATABASE_ERROR
+            - NO_ACTIVE_ACCOUNTS
+            - INTERNAL_SERVER_ERROR
+            - NOT_FOUND
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Request validation failed"
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp when error occurred
+          example: "2024-02-01T10:00:00.000Z"
+        traceId:
+          type: string
+          format: uuid
+          description: Trace ID for error tracking
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        details:
+          type: object
+          description: Additional error details (varies by error type)
+          additionalProperties: true
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - service
+        - version
+        - uptime
+      properties:
+        status:
+          type: string
+          enum: [OK, ERROR]
+          description: Health status
+          example: "OK"
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp
+          example: "2024-02-01T10:00:00.000Z"
+        service:
+          type: string
+          description: Service name
+          example: "billing-cycle-management-service"
+        version:
+          type: string
+          description: Service version
+          example: "1.0.0"
+        uptime:
+          type: integer
+          minimum: 0
+          description: Service uptime in seconds
+          example: 3600
+        database:
+          type: object
+          properties:
+            connected:
+              type: boolean
+              description: Database connection status
+              example: true
+
+tags:
+  - name: Billing Cycle
+    description: Billing cycle management operations
+  - name: Health
+    description: Health check endpoints

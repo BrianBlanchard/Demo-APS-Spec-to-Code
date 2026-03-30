@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: account-reporting-db
+    environment:
+      POSTGRES_DB: account_reporting
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - account-reporting-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: account-reporting-service
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: account_reporting
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_POOL_MIN: 2
+      DB_POOL_MAX: 10
+      LOG_LEVEL: info
+      CORS_ORIGIN: "*"
+      REPORT_BASE_URL: https://reports.example.com
+      REPORT_STORAGE_PATH: /tmp/reports
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health/live', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - account-reporting-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  account-reporting-network:
+    driver: bridge

@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: customer-profile-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: customer_profile_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - customer-profile-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: customer-profile-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - customer-profile-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: customer-profile-service
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      SERVICE_NAME: customer-profile-service
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: customer_profile_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_POOL_MIN: 2
+      DB_POOL_MAX: 10
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      REDIS_TTL: 300
+      LOG_LEVEL: info
+      LOG_PRETTY_PRINT: false
+      RATE_LIMIT_GET_WINDOW_MS: 60000
+      RATE_LIMIT_GET_MAX: 500
+      RATE_LIMIT_PUT_WINDOW_MS: 60000
+      RATE_LIMIT_PUT_MAX: 100
+      CORS_ORIGIN: "*"
+      CORS_CREDENTIALS: "true"
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health/ready', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); });"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    networks:
+      - customer-profile-network
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:
+
+networks:
+  customer-profile-network:
+    driver: bridge

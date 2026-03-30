@@ -1,0 +1,456 @@
+openapi: 3.0.3
+info:
+  title: Account Status Management Service
+  description: |
+    Manages credit card account status transitions including activation, suspension,
+    and deactivation with proper validation, audit logging, and cascading effects to
+    associated cards and pending transactions.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: http://localhost:3000
+    description: Docker containerized environment
+  - url: https://dev-api.example.com
+    description: Development environment
+  - url: https://staging-api.example.com
+    description: Staging environment
+  - url: https://api.example.com
+    description: Production environment
+
+tags:
+  - name: Account Status
+    description: Account status management operations
+  - name: Health
+    description: Health check endpoints
+
+paths:
+  /api/v1/accounts/{accountId}/status:
+    put:
+      tags:
+        - Account Status
+      summary: Update account status
+      description: |
+        Updates the status of a credit card account with proper validation,
+        audit logging, and cascading effects to associated cards. Requires ADMIN role.
+      operationId: updateAccountStatus
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          description: Unique account identifier (11 digits)
+          schema:
+            type: string
+            pattern: '^\d{11}$'
+            example: "12345678901"
+        - name: x-trace-id
+          in: header
+          required: false
+          description: Trace ID for request correlation
+          schema:
+            type: string
+            format: uuid
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusUpdateRequest'
+            examples:
+              suspendAccount:
+                summary: Suspend account for fraud investigation
+                value:
+                  newStatus: suspended
+                  reason: fraud_investigation
+                  notes: Suspicious transactions detected, temporarily suspending account pending review
+                  notifyCustomer: true
+              activateAccount:
+                summary: Reactivate suspended account
+                value:
+                  newStatus: active
+                  reason: customer_request
+                  notes: Investigation complete, reactivating account
+                  notifyCustomer: true
+              closeAccount:
+                summary: Close account permanently
+                value:
+                  newStatus: inactive
+                  reason: customer_request
+                  notes: Customer requested account closure
+                  notifyCustomer: true
+      responses:
+        '200':
+          description: Account status updated successfully
+          headers:
+            x-trace-id:
+              description: Trace ID for request correlation
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusUpdateResponse'
+              examples:
+                success:
+                  summary: Successful status update with cascaded cards
+                  value:
+                    accountId: "12345678901"
+                    previousStatus: active
+                    newStatus: suspended
+                    reason: fraud_investigation
+                    effectiveDate: "2024-01-15T14:30:00Z"
+                    updatedBy: ADMIN001
+                    cascadedCards:
+                      - cardNumber: "************1234"
+                        previousStatus: active
+                        newStatus: suspended
+                      - cardNumber: "************5678"
+                        previousStatus: active
+                        newStatus: suspended
+                    notificationSent: true
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidStatus:
+                  summary: Invalid status value
+                  value:
+                    errorCode: VALIDATION_ERROR
+                    message: "newStatus: Invalid enum value"
+                    timestamp: "2024-01-15T14:30:00Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '401':
+          description: Unauthorized - Invalid or missing JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                unauthorized:
+                  summary: Missing authorization
+                  value:
+                    errorCode: UNAUTHORIZED
+                    message: "Missing or invalid authorization header"
+                    timestamp: "2024-01-15T14:30:00Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '403':
+          description: Forbidden - User lacks ADMIN role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                forbidden:
+                  summary: Insufficient permissions
+                  value:
+                    errorCode: FORBIDDEN
+                    message: "Required role: ADMIN"
+                    timestamp: "2024-01-15T14:30:00Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '404':
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                notFound:
+                  summary: Account does not exist
+                  value:
+                    errorCode: ACCOUNT_NOT_FOUND
+                    message: "Account not found: 12345678901"
+                    timestamp: "2024-01-15T14:30:00Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '409':
+          description: Conflict - Concurrent modification detected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                conflict:
+                  summary: Account modified by another user
+                  value:
+                    errorCode: CONCURRENT_MODIFICATION
+                    message: "Account status was changed by another user. Account ID: 12345678901"
+                    timestamp: "2024-01-15T14:30:00Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '422':
+          description: Unprocessable Entity - Invalid status transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidTransition:
+                  summary: Cannot reactivate closed account
+                  value:
+                    errorCode: INVALID_STATUS_TRANSITION
+                    message: "Cannot transition from inactive to active. Account ID: 12345678901, Current Status: inactive"
+                    timestamp: "2024-01-15T14:30:00Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '429':
+          description: Too Many Requests - Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                rateLimitExceeded:
+                  summary: Rate limit exceeded
+                  value:
+                    errorCode: RATE_LIMIT_EXCEEDED
+                    message: "Too many requests, please try again later"
+                    timestamp: "2024-01-15T14:30:00Z"
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                internalError:
+                  summary: Database error
+                  value:
+                    errorCode: INTERNAL_SERVER_ERROR
+                    message: "An unexpected error occurred"
+                    timestamp: "2024-01-15T14:30:00Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe
+      description: Checks if the service is ready to accept requests (database connectivity)
+      operationId: readinessCheck
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ready
+                timestamp: "2024-01-15T14:30:00Z"
+                checks:
+                  database: healthy
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: not ready
+                timestamp: "2024-01-15T14:30:00Z"
+                checks:
+                  database: unhealthy
+
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: Checks if the service is alive and running
+      operationId: livenessCheck
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LivenessResponse'
+              example:
+                status: alive
+                timestamp: "2024-01-15T14:30:00Z"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token with ADMIN role required for status changes
+
+  schemas:
+    StatusUpdateRequest:
+      type: object
+      required:
+        - newStatus
+        - reason
+        - notifyCustomer
+      properties:
+        newStatus:
+          type: string
+          enum:
+            - active
+            - suspended
+            - inactive
+          description: Target status for the account
+          example: suspended
+        reason:
+          type: string
+          enum:
+            - fraud_investigation
+            - customer_request
+            - delinquent_account
+            - account_upgrade
+            - regulatory_compliance
+            - system_maintenance
+          description: Reason code for the status change
+          example: fraud_investigation
+        notes:
+          type: string
+          maxLength: 500
+          description: Additional notes about the status change
+          example: Suspicious transactions detected, temporarily suspending account pending review
+        notifyCustomer:
+          type: boolean
+          description: Whether to send notification to the customer
+          example: true
+
+    StatusUpdateResponse:
+      type: object
+      properties:
+        accountId:
+          type: string
+          pattern: '^\d{11}$'
+          description: Account identifier
+          example: "12345678901"
+        previousStatus:
+          type: string
+          enum:
+            - active
+            - suspended
+            - inactive
+          description: Status before the change
+          example: active
+        newStatus:
+          type: string
+          enum:
+            - active
+            - suspended
+            - inactive
+          description: Status after the change
+          example: suspended
+        reason:
+          type: string
+          enum:
+            - fraud_investigation
+            - customer_request
+            - delinquent_account
+            - account_upgrade
+            - regulatory_compliance
+            - system_maintenance
+          description: Reason for the status change
+          example: fraud_investigation
+        effectiveDate:
+          type: string
+          format: date-time
+          description: Timestamp when the change took effect
+          example: "2024-01-15T14:30:00Z"
+        updatedBy:
+          type: string
+          maxLength: 8
+          description: User ID who made the change
+          example: ADMIN001
+        cascadedCards:
+          type: array
+          description: List of cards whose status was cascaded
+          items:
+            $ref: '#/components/schemas/CascadedCard'
+        notificationSent:
+          type: boolean
+          description: Whether customer notification was successfully sent
+          example: true
+
+    CascadedCard:
+      type: object
+      properties:
+        cardNumber:
+          type: string
+          description: Masked card number
+          example: "************1234"
+        previousStatus:
+          type: string
+          description: Card status before cascade
+          example: active
+        newStatus:
+          type: string
+          description: Card status after cascade
+          example: suspended
+
+    ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - message
+        - timestamp
+        - traceId
+      properties:
+        errorCode:
+          type: string
+          description: Machine-readable error code
+          example: ACCOUNT_NOT_FOUND
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Account not found: 12345678901"
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp when the error occurred
+          example: "2024-01-15T14:30:00Z"
+        traceId:
+          type: string
+          format: uuid
+          description: Trace ID for request correlation
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+            - not ready
+          example: ready
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T14:30:00Z"
+        checks:
+          type: object
+          properties:
+            database:
+              type: string
+              enum:
+                - healthy
+                - unhealthy
+              example: healthy
+
+    LivenessResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - alive
+          example: alive
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-01-15T14:30:00Z"

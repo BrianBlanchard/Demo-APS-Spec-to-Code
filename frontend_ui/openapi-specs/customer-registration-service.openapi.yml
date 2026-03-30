@@ -1,0 +1,519 @@
+# OpenAPI spec for service customer-registration-service
+openapi: 3.0.3
+info:
+  title: Customer Registration Service API
+  version: 1.0.0
+  description: |
+    Customer Registration Service for Advanced Payment System.
+    Enables creation of new customer records with comprehensive validation
+    of personal information, contact details, and identity verification.
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: http://localhost:3000
+    description: Docker containerized environment
+  - url: https://dev-api.example.com
+    description: Development environment
+  - url: https://staging-api.example.com
+    description: Staging environment
+  - url: https://api.example.com
+    description: Production environment
+
+tags:
+  - name: Customers
+    description: Customer registration and management operations
+  - name: Health
+    description: Health check and monitoring endpoints
+
+paths:
+  /api/v1/customers:
+    post:
+      tags:
+        - Customers
+      summary: Create new customer
+      description: |
+        Creates a new customer record with comprehensive validation of personal information,
+        contact details, and identity verification. Requires JWT authentication with ADMIN or CSR role.
+      operationId: createCustomer
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Trace-Id
+          in: header
+          description: Distributed tracing ID
+          required: false
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCustomerRequest'
+            examples:
+              validCustomer:
+                summary: Valid customer registration
+                value:
+                  firstName: John
+                  middleName: Michael
+                  lastName: Anderson
+                  dateOfBirth: "1985-06-15"
+                  ssn: "123-45-6789"
+                  governmentId: DL12345678
+                  addressLine1: 123 Main Street
+                  addressLine2: Apt 4B
+                  city: Chicago
+                  state: IL
+                  zipCode: "60601"
+                  country: USA
+                  phone1: "312-555-0123"
+                  phone2: "312-555-0456"
+                  eftAccountId: EFT987654321
+                  isPrimaryCardholder: true
+                  ficoScore: 720
+      responses:
+        '201':
+          description: Customer created successfully
+          headers:
+            X-Trace-Id:
+              description: Distributed tracing ID
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateCustomerResponse'
+              examples:
+                success:
+                  summary: Successful customer creation
+                  value:
+                    customerId: "123456789"
+                    status: active
+                    createdAt: "2024-01-15T10:30:00Z"
+                    verificationStatus: pending
+                    creditLimit: 5000
+        '400':
+          description: Validation errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                validationError:
+                  summary: Invalid input data
+                  value:
+                    errorCode: VALIDATION_ERROR
+                    message: Validation failed
+                    timestamp: "2024-01-15T10:30:00Z"
+                    traceId: 550e8400-e29b-41d4-a716-446655440000
+                    details:
+                      - field: ficoScore
+                        message: FICO score must be between 300 and 850
+        '401':
+          description: Unauthorized - Invalid or expired JWT token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                unauthorized:
+                  summary: Missing or invalid token
+                  value:
+                    errorCode: UNAUTHORIZED
+                    message: Invalid or expired JWT token
+                    timestamp: "2024-01-15T10:30:00Z"
+                    traceId: 550e8400-e29b-41d4-a716-446655440000
+        '403':
+          description: Forbidden - User lacks permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                forbidden:
+                  summary: Insufficient permissions
+                  value:
+                    errorCode: FORBIDDEN
+                    message: User lacks permission to create customers
+                    timestamp: "2024-01-15T10:30:00Z"
+                    traceId: 550e8400-e29b-41d4-a716-446655440000
+        '409':
+          description: Conflict - Duplicate SSN or Government ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                duplicateSSN:
+                  summary: Duplicate SSN detected
+                  value:
+                    errorCode: CONFLICT
+                    message: Customer with this SSN already exists
+                    timestamp: "2024-01-15T10:30:00Z"
+                    traceId: 550e8400-e29b-41d4-a716-446655440000
+                    details:
+                      existingCustomerId: "987654321"
+        '422':
+          description: Unprocessable Entity - Business rule violation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidSSN:
+                  summary: Invalid SSN range
+                  value:
+                    errorCode: UNPROCESSABLE_ENTITY
+                    message: SSN first part cannot be 000, 666, or 900-999
+                    timestamp: "2024-01-15T10:30:00Z"
+                    traceId: 550e8400-e29b-41d4-a716-446655440000
+                stateZipMismatch:
+                  summary: State and ZIP code mismatch
+                  value:
+                    errorCode: UNPROCESSABLE_ENTITY
+                    message: State code must match ZIP code region
+                    timestamp: "2024-01-15T10:30:00Z"
+                    traceId: 550e8400-e29b-41d4-a716-446655440000
+                underAge:
+                  summary: Customer under 18 years old
+                  value:
+                    errorCode: UNPROCESSABLE_ENTITY
+                    message: Customer must be at least 18 years old
+                    timestamp: "2024-01-15T10:30:00Z"
+                    traceId: 550e8400-e29b-41d4-a716-446655440000
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                serverError:
+                  summary: Database connection failure
+                  value:
+                    errorCode: INTERNAL_SERVER_ERROR
+                    message: Internal Server Error
+                    timestamp: "2024-01-15T10:30:00Z"
+                    traceId: 550e8400-e29b-41d4-a716-446655440000
+
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe
+      description: |
+        Checks if the service is ready to accept traffic.
+        Validates database connectivity and critical dependencies.
+      operationId: readinessCheck
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+              examples:
+                ready:
+                  summary: Service ready
+                  value:
+                    status: ok
+                    timestamp: "2024-01-15T10:30:00Z"
+                    uptime: 3600
+                    checks:
+                      database: ok
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+              examples:
+                notReady:
+                  summary: Service not ready
+                  value:
+                    status: error
+                    timestamp: "2024-01-15T10:30:00Z"
+                    uptime: 3600
+                    checks:
+                      database: error
+
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: |
+        Checks if the service is alive and running.
+        Used by container orchestrators to determine if the service should be restarted.
+      operationId: livenessCheck
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+              examples:
+                alive:
+                  summary: Service alive
+                  value:
+                    status: ok
+                    timestamp: "2024-01-15T10:30:00Z"
+                    uptime: 3600
+
+  /v1/customer-registration/health:
+    get:
+      tags:
+        - Health
+      summary: Alternative health check endpoint
+      description: Business capability specific health check endpoint
+      operationId: capabilityHealthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token with ADMIN or CSR role
+
+  schemas:
+    CreateCustomerRequest:
+      type: object
+      required:
+        - firstName
+        - lastName
+        - dateOfBirth
+        - ssn
+        - governmentId
+        - addressLine1
+        - city
+        - state
+        - zipCode
+        - country
+        - phone1
+        - isPrimaryCardholder
+        - ficoScore
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 25
+          description: Customer first name (alphabetic characters and spaces only)
+          example: John
+        middleName:
+          type: string
+          maxLength: 25
+          description: Customer middle name (optional)
+          example: Michael
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 25
+          description: Customer last name (alphabetic characters and spaces only)
+          example: Anderson
+        dateOfBirth:
+          type: string
+          format: date
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          description: Birth date in YYYY-MM-DD format (must be 18+ years old)
+          example: "1985-06-15"
+        ssn:
+          type: string
+          pattern: '^\d{3}-\d{2}-\d{4}$'
+          description: Social Security Number with dashes (first part cannot be 000, 666, or 900-999)
+          example: "123-45-6789"
+        governmentId:
+          type: string
+          minLength: 1
+          maxLength: 20
+          description: Government issued ID number (e.g., Driver's License)
+          example: DL12345678
+        addressLine1:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: Primary address line
+          example: 123 Main Street
+        addressLine2:
+          type: string
+          maxLength: 50
+          description: Secondary address line (optional)
+          example: Apt 4B
+        addressLine3:
+          type: string
+          maxLength: 50
+          description: Tertiary address line (optional)
+          example: ""
+        city:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: City name
+          example: Chicago
+        state:
+          type: string
+          minLength: 2
+          maxLength: 2
+          description: Two-letter state code (must match ZIP code)
+          example: IL
+        zipCode:
+          type: string
+          minLength: 5
+          maxLength: 10
+          description: ZIP code (must match state)
+          example: "60601"
+        country:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: Three-letter country code
+          example: USA
+        phone1:
+          type: string
+          minLength: 10
+          maxLength: 15
+          description: Primary phone number (valid North American area code)
+          example: "312-555-0123"
+        phone2:
+          type: string
+          minLength: 10
+          maxLength: 15
+          description: Secondary phone number (optional)
+          example: "312-555-0456"
+        eftAccountId:
+          type: string
+          maxLength: 20
+          description: Electronic funds transfer account identifier (optional)
+          example: EFT987654321
+        isPrimaryCardholder:
+          type: boolean
+          description: Primary cardholder indicator
+          example: true
+        ficoScore:
+          type: integer
+          minimum: 300
+          maximum: 850
+          description: Credit score (300-850 range)
+          example: 720
+
+    CreateCustomerResponse:
+      type: object
+      required:
+        - customerId
+        - status
+        - createdAt
+        - verificationStatus
+        - creditLimit
+      properties:
+        customerId:
+          type: string
+          minLength: 9
+          maxLength: 9
+          description: Unique 9-digit customer identifier
+          example: "123456789"
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+            - suspended
+          description: Customer account status
+          example: active
+        createdAt:
+          type: string
+          format: date-time
+          description: Record creation timestamp in ISO 8601 format
+          example: "2024-01-15T10:30:00Z"
+        verificationStatus:
+          type: string
+          enum:
+            - pending
+            - verified
+            - manual_review_required
+          description: Identity verification status
+          example: pending
+        creditLimit:
+          type: number
+          format: decimal
+          description: Initial credit limit based on FICO score
+          example: 5000
+
+    ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - message
+        - timestamp
+        - traceId
+      properties:
+        errorCode:
+          type: string
+          description: Error code identifier
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          description: Human-readable error message
+          example: Validation failed
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp in ISO 8601 format
+          example: "2024-01-15T10:30:00Z"
+        traceId:
+          type: string
+          description: Distributed tracing ID for debugging
+          example: 550e8400-e29b-41d4-a716-446655440000
+        details:
+          type: object
+          description: Additional error details (optional)
+          additionalProperties: true
+          example:
+            field: ficoScore
+            message: Must be between 300 and 850
+
+    HealthCheckResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - uptime
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - error
+          description: Overall health status
+          example: ok
+        timestamp:
+          type: string
+          format: date-time
+          description: Health check timestamp in ISO 8601 format
+          example: "2024-01-15T10:30:00Z"
+        uptime:
+          type: number
+          description: Application uptime in seconds
+          example: 3600
+        checks:
+          type: object
+          description: Individual health check results (optional)
+          properties:
+            database:
+              type: string
+              example: ok
+            memory:
+              type: string
+              example: ok

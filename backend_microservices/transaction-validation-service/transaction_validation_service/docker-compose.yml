@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: transaction-validation-db
+    environment:
+      POSTGRES_DB: transaction_validation
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - transaction-validation-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: transaction-validation-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - transaction-validation-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: transaction-validation-service
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      API_BASE_PATH: /api/v1
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: transaction_validation
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_POOL_MIN: 2
+      DB_POOL_MAX: 10
+      DB_CONNECTION_TIMEOUT: 5000
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      REDIS_DB: 0
+      REDIS_TTL: 300
+      LOG_LEVEL: info
+      INTERNAL_SERVICE_TOKEN: dev-token-12345
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX_REQUESTS: 10000
+      VALIDATION_TIMEOUT_MS: 1000
+      VALIDATION_MAX_RESPONSE_TIME_MS: 500
+      DUPLICATE_TRANSACTION_WINDOW_SECONDS: 120
+      CVV_MAX_FAILURES: 3
+      CORS_ORIGIN: "*"
+      CORS_CREDENTIALS: "true"
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - transaction-validation-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/health/live || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  transaction-validation-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:

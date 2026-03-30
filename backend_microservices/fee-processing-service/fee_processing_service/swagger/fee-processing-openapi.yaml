@@ -1,0 +1,425 @@
+openapi: 3.0.3
+
+info:
+  title: Fee Processing Service API
+  version: 1.0.0
+  description: |
+    Processes various account fees including late payment fees, annual fees, over-limit fees, and cash advance fees.
+    Posts fees as transaction type 04 with appropriate descriptions.
+    Supports both automated batch fee processing and manual fee assessment.
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: http://localhost:3000
+    description: Docker containerized environment
+  - url: https://dev-api.example.com
+    description: Development environment
+  - url: https://staging-api.example.com
+    description: Staging environment
+  - url: https://api.example.com
+    description: Production environment
+
+tags:
+  - name: Fees
+    description: Fee assessment and processing operations
+  - name: Health
+    description: Health check and readiness endpoints
+
+paths:
+  /api/v1/fees/assess:
+    post:
+      tags:
+        - Fees
+      summary: Assess and post account fee
+      description: |
+        Calculate and post fees based on account activity.
+        Supports multiple fee types (late payment, annual, over-limit, cash advance, returned payment).
+        Posts fees as transaction type 04 and updates account balance.
+      operationId: assessFee
+      parameters:
+        - name: x-trace-id
+          in: header
+          description: Correlation ID for request tracing
+          required: false
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeeAssessmentRequest'
+            examples:
+              latePaymentFee:
+                summary: Late payment fee
+                value:
+                  accountId: "12345678901"
+                  feeType: "late_payment"
+                  amount: 35.00
+                  reason: "Payment past due date"
+              annualFee:
+                summary: Annual account fee
+                value:
+                  accountId: "98765432109"
+                  feeType: "annual_fee"
+                  amount: 95.00
+                  reason: "Annual account maintenance"
+              overLimitFee:
+                summary: Over credit limit fee
+                value:
+                  accountId: "11122233344"
+                  feeType: "over_limit"
+                  amount: 40.00
+                  reason: "Account exceeded credit limit"
+      responses:
+        '200':
+          description: Fee assessed and posted successfully
+          headers:
+            x-trace-id:
+              description: Correlation ID for request tracing
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeeAssessmentResponse'
+              examples:
+                success:
+                  summary: Successful fee assessment
+                  value:
+                    accountId: "12345678901"
+                    feeType: "late_payment"
+                    amount: 35.00
+                    transactionId: "1234567890123456"
+                    posted: true
+        '400':
+          description: Validation error
+          headers:
+            x-trace-id:
+              description: Correlation ID for request tracing
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidAccountId:
+                  summary: Invalid account ID format
+                  value:
+                    errorCode: "VALIDATION_ERROR"
+                    message: "accountId: Account ID must be exactly 11 digits"
+                    timestamp: "2024-01-15T10:30:00.000Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+                invalidFeeType:
+                  summary: Invalid fee type
+                  value:
+                    errorCode: "VALIDATION_ERROR"
+                    message: "feeType: Invalid fee type"
+                    timestamp: "2024-01-15T10:30:00.000Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+                invalidAmount:
+                  summary: Invalid amount
+                  value:
+                    errorCode: "VALIDATION_ERROR"
+                    message: "amount: Amount must be positive"
+                    timestamp: "2024-01-15T10:30:00.000Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '404':
+          description: Account not found
+          headers:
+            x-trace-id:
+              description: Correlation ID for request tracing
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                accountNotFound:
+                  summary: Account does not exist
+                  value:
+                    errorCode: "NOT_FOUND"
+                    message: "Account not found: 12345678901"
+                    timestamp: "2024-01-15T10:30:00.000Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '422':
+          description: Business validation error
+          headers:
+            x-trace-id:
+              description: Correlation ID for request tracing
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                inactiveAccount:
+                  summary: Account is not active
+                  value:
+                    errorCode: "BUSINESS_ERROR"
+                    message: "Account is not active: suspended"
+                    timestamp: "2024-01-15T10:30:00.000Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '500':
+          description: Internal server error
+          headers:
+            x-trace-id:
+              description: Correlation ID for request tracing
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                serverError:
+                  summary: Unexpected server error
+                  value:
+                    errorCode: "INTERNAL_SERVER_ERROR"
+                    message: "An unexpected error occurred"
+                    timestamp: "2024-01-15T10:30:00.000Z"
+                    traceId: "550e8400-e29b-41d4-a716-446655440000"
+
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe
+      description: Checks if the service is ready to accept traffic (database connectivity)
+      operationId: healthReady
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                ready:
+                  summary: Service ready
+                  value:
+                    status: "healthy"
+                    timestamp: "2024-01-15T10:30:00.000Z"
+                    service: "fee-processing-service"
+                    version: "1.0.0"
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                notReady:
+                  summary: Service not ready
+                  value:
+                    status: "unhealthy"
+                    timestamp: "2024-01-15T10:30:00.000Z"
+                    service: "fee-processing-service"
+                    version: "1.0.0"
+
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: Checks if the service is alive and running
+      operationId: healthLive
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                alive:
+                  summary: Service alive
+                  value:
+                    status: "healthy"
+                    timestamp: "2024-01-15T10:30:00.000Z"
+                    service: "fee-processing-service"
+                    version: "1.0.0"
+
+  /v1/fees/health/ready:
+    get:
+      tags:
+        - Health
+      summary: Versioned readiness probe
+      description: Checks if the service is ready to accept traffic (versioned endpoint)
+      operationId: healthReadyVersioned
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /v1/fees/health/live:
+    get:
+      tags:
+        - Health
+      summary: Versioned liveness probe
+      description: Checks if the service is alive and running (versioned endpoint)
+      operationId: healthLiveVersioned
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+components:
+  schemas:
+    FeeAssessmentRequest:
+      type: object
+      required:
+        - accountId
+        - feeType
+        - amount
+        - reason
+      properties:
+        accountId:
+          type: string
+          description: 11-digit account identifier
+          pattern: '^\d{11}$'
+          minLength: 11
+          maxLength: 11
+          example: "12345678901"
+        feeType:
+          type: string
+          description: Type of fee being assessed
+          enum:
+            - late_payment
+            - annual_fee
+            - over_limit
+            - cash_advance
+            - returned_payment
+          example: "late_payment"
+        amount:
+          type: number
+          format: double
+          description: Fee amount (must be positive with max 2 decimal places)
+          minimum: 0.01
+          multipleOf: 0.01
+          example: 35.00
+        reason:
+          type: string
+          description: Reason for fee assessment
+          minLength: 1
+          example: "Payment past due date"
+
+    FeeAssessmentResponse:
+      type: object
+      required:
+        - accountId
+        - feeType
+        - amount
+        - transactionId
+        - posted
+      properties:
+        accountId:
+          type: string
+          description: 11-digit account identifier
+          example: "12345678901"
+        feeType:
+          type: string
+          description: Type of fee assessed
+          example: "late_payment"
+        amount:
+          type: number
+          format: double
+          description: Fee amount posted
+          example: 35.00
+        transactionId:
+          type: string
+          description: 16-digit transaction identifier
+          pattern: '^\d{16}$'
+          minLength: 16
+          maxLength: 16
+          example: "1234567890123456"
+        posted:
+          type: boolean
+          description: Indicates if fee was successfully posted
+          example: true
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - service
+        - version
+      properties:
+        status:
+          type: string
+          enum:
+            - healthy
+            - unhealthy
+          description: Health status of the service
+          example: "healthy"
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of health check
+          example: "2024-01-15T10:30:00.000Z"
+        service:
+          type: string
+          description: Service name
+          example: "fee-processing-service"
+        version:
+          type: string
+          description: Service version
+          example: "1.0.0"
+
+    ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - message
+        - timestamp
+        - traceId
+      properties:
+        errorCode:
+          type: string
+          description: Machine-readable error code
+          enum:
+            - VALIDATION_ERROR
+            - NOT_FOUND
+            - BUSINESS_ERROR
+            - INTERNAL_SERVER_ERROR
+          example: "VALIDATION_ERROR"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Account ID must be exactly 11 digits"
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp when error occurred
+          example: "2024-01-15T10:30:00.000Z"
+        traceId:
+          type: string
+          format: uuid
+          description: Correlation ID for request tracing
+          example: "550e8400-e29b-41d4-a716-446655440000"

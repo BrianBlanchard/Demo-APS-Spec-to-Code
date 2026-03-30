@@ -1,0 +1,383 @@
+# OpenAPI spec for service notification-preference-service
+openapi: 3.0.3
+info:
+  title: Notification Preference Service API
+  version: 1.0.0
+  description: |
+    Service to manage customer notification preferences including channel selection,
+    transaction alert thresholds, and opt-in/opt-out settings for marketing communications.
+    Ensures compliance with communication preferences and regulations.
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: http://localhost:3000
+    description: Docker container (local)
+  - url: https://dev-api.example.com
+    description: Development environment
+  - url: https://staging-api.example.com
+    description: Staging environment
+  - url: https://api.example.com
+    description: Production environment
+
+tags:
+  - name: Notification Preferences
+    description: Manage customer notification preferences
+  - name: Health
+    description: Health check endpoints
+
+paths:
+  /api/v1/customers/{customerId}/notification-preferences:
+    put:
+      tags:
+        - Notification Preferences
+      summary: Update customer notification preferences
+      description: |
+        Updates notification preferences for a customer including channel selection,
+        transaction alert thresholds, and marketing opt-in/opt-out settings.
+
+        **Edge Cases:**
+        - If all notifications are disabled, critical security alerts will still be sent
+        - If SMS is enabled but phone number is invalid, SMS will be disabled automatically
+      operationId: updateNotificationPreferences
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          description: Unique customer identifier
+          schema:
+            type: string
+            minLength: 1
+            example: "123456789"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateNotificationPreferenceRequest'
+            examples:
+              fullPreferences:
+                summary: Complete preference update
+                value:
+                  emailEnabled: true
+                  smsEnabled: true
+                  transactionAlerts:
+                    enabled: true
+                    threshold: 500.00
+                    channels: ["email", "sms"]
+                  paymentConfirmations:
+                    enabled: true
+                    channels: ["email"]
+                  monthlyStatements:
+                    enabled: true
+                    channels: ["email"]
+                  marketingEmails:
+                    enabled: false
+              minimalPreferences:
+                summary: Minimal preferences
+                value:
+                  emailEnabled: true
+                  smsEnabled: false
+                  transactionAlerts:
+                    enabled: false
+                    threshold: 0
+                    channels: ["email"]
+                  paymentConfirmations:
+                    enabled: true
+                    channels: ["email"]
+                  monthlyStatements:
+                    enabled: false
+                    channels: ["email"]
+                  marketingEmails:
+                    enabled: false
+      responses:
+        '200':
+          description: Preferences updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferenceResponse'
+              example:
+                customerId: "123456789"
+                preferences:
+                  emailEnabled: true
+                  smsEnabled: true
+                  transactionAlerts:
+                    enabled: true
+                    threshold: 500.00
+                    channels: ["email", "sms"]
+                  paymentConfirmations:
+                    enabled: true
+                    channels: ["email"]
+                  monthlyStatements:
+                    enabled: true
+                    channels: ["email"]
+                  marketingEmails:
+                    enabled: false
+                updatedAt: "2024-01-15T14:30:00Z"
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "VALIDATION_ERROR"
+                message: "transactionAlerts.threshold: must be non-negative"
+                timestamp: "2024-01-15T14:30:00Z"
+                traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "NOT_FOUND"
+                message: "Customer not found"
+                timestamp: "2024-01-15T14:30:00Z"
+                traceId: "550e8400-e29b-41d4-a716-446655440000"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: "INTERNAL_SERVER_ERROR"
+                message: "An unexpected error occurred"
+                timestamp: "2024-01-15T14:30:00Z"
+                traceId: "550e8400-e29b-41d4-a716-446655440000"
+
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe
+      description: |
+        Check if the service is ready to accept traffic.
+        Returns 503 if database is unavailable.
+      operationId: healthReady
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+              example:
+                status: "UP"
+                timestamp: "2024-01-15T14:30:00Z"
+                checks:
+                  database: "UP"
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+              example:
+                status: "DOWN"
+                timestamp: "2024-01-15T14:30:00Z"
+                checks:
+                  database: "DOWN"
+
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: Check if the service is alive
+      operationId: healthLive
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+              example:
+                status: "UP"
+                timestamp: "2024-01-15T14:30:00Z"
+                checks:
+                  database: "UP"
+
+components:
+  schemas:
+    UpdateNotificationPreferenceRequest:
+      type: object
+      required:
+        - emailEnabled
+        - smsEnabled
+        - transactionAlerts
+        - paymentConfirmations
+        - monthlyStatements
+        - marketingEmails
+      properties:
+        emailEnabled:
+          type: boolean
+          description: Enable/disable email notifications globally
+          example: true
+        smsEnabled:
+          type: boolean
+          description: Enable/disable SMS notifications globally
+          example: true
+        transactionAlerts:
+          $ref: '#/components/schemas/TransactionAlerts'
+        paymentConfirmations:
+          $ref: '#/components/schemas/NotificationSetting'
+        monthlyStatements:
+          $ref: '#/components/schemas/NotificationSetting'
+        marketingEmails:
+          $ref: '#/components/schemas/MarketingEmails'
+
+    TransactionAlerts:
+      type: object
+      required:
+        - enabled
+        - threshold
+        - channels
+      properties:
+        enabled:
+          type: boolean
+          description: Enable/disable transaction alerts
+          example: true
+        threshold:
+          type: number
+          format: double
+          minimum: 0
+          description: Transaction amount threshold for alerts
+          example: 500.00
+        channels:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [email, sms, push]
+          description: Notification channels for transaction alerts
+          example: ["email", "sms"]
+
+    NotificationSetting:
+      type: object
+      required:
+        - enabled
+        - channels
+      properties:
+        enabled:
+          type: boolean
+          description: Enable/disable this notification type
+          example: true
+        channels:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [email, sms, push]
+          description: Notification channels
+          example: ["email"]
+
+    MarketingEmails:
+      type: object
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+          description: Opt-in/opt-out for marketing emails
+          example: false
+
+    NotificationPreferenceResponse:
+      type: object
+      required:
+        - customerId
+        - preferences
+        - updatedAt
+      properties:
+        customerId:
+          type: string
+          description: Customer identifier
+          example: "123456789"
+        preferences:
+          type: object
+          required:
+            - emailEnabled
+            - smsEnabled
+            - transactionAlerts
+            - paymentConfirmations
+            - monthlyStatements
+            - marketingEmails
+          properties:
+            emailEnabled:
+              type: boolean
+              example: true
+            smsEnabled:
+              type: boolean
+              example: true
+            transactionAlerts:
+              $ref: '#/components/schemas/TransactionAlerts'
+            paymentConfirmations:
+              $ref: '#/components/schemas/NotificationSetting'
+            monthlyStatements:
+              $ref: '#/components/schemas/NotificationSetting'
+            marketingEmails:
+              $ref: '#/components/schemas/MarketingEmails'
+        updatedAt:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of last update
+          example: "2024-01-15T14:30:00Z"
+
+    HealthCheckResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - checks
+      properties:
+        status:
+          type: string
+          enum: [UP, DOWN]
+          description: Overall health status
+          example: "UP"
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp
+          example: "2024-01-15T14:30:00Z"
+        checks:
+          type: object
+          properties:
+            database:
+              type: string
+              enum: [UP, DOWN]
+              example: "UP"
+
+    ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - message
+        - timestamp
+        - traceId
+      properties:
+        errorCode:
+          type: string
+          description: Machine-readable error code
+          example: "VALIDATION_ERROR"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Invalid request data"
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp
+          example: "2024-01-15T14:30:00Z"
+        traceId:
+          type: string
+          format: uuid
+          description: Unique trace identifier for request tracking
+          example: "550e8400-e29b-41d4-a716-446655440000"

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<coverage generated="1774641028261" clover="3.2.0">
+  <project timestamp="1774641028261" name="All files">
+    <metrics statements="19" coveredstatements="19" conditionals="8" coveredconditionals="8" methods="4" coveredmethods="4" elements="31" coveredelements="31" complexity="0" loc="19" ncloc="19" packages="1" files="1" classes="1"/>
+    <file name="transaction.model.ts" path="/tmp/agent-backend-r_qckxzq/transaction_posting_service/src/models/transaction.model.ts">
+      <metrics statements="19" coveredstatements="19" conditionals="8" coveredconditionals="8" methods="4" coveredmethods="4"/>
+      <line num="21" count="1" type="cond" truecount="2" falsecount="0"/>
+      <line num="22" count="1" type="stmt"/>
+      <line num="23" count="1" type="stmt"/>
+      <line num="24" count="1" type="stmt"/>
+      <line num="27" count="1" type="cond" truecount="2" falsecount="0"/>
+      <line num="28" count="1" type="stmt"/>
+      <line num="29" count="1" type="stmt"/>
+      <line num="30" count="1" type="stmt"/>
+      <line num="31" count="1" type="stmt"/>
+      <line num="32" count="1" type="stmt"/>
+      <line num="33" count="1" type="stmt"/>
+      <line num="48" count="1" type="cond" truecount="2" falsecount="0"/>
+      <line num="49" count="1" type="stmt"/>
+      <line num="50" count="1" type="stmt"/>
+      <line num="51" count="1" type="stmt"/>
+      <line num="62" count="1" type="cond" truecount="2" falsecount="0"/>
+      <line num="63" count="1" type="stmt"/>
+      <line num="64" count="1" type="stmt"/>
+      <line num="65" count="1" type="stmt"/>
+    </file>
+  </project>
+</coverage>

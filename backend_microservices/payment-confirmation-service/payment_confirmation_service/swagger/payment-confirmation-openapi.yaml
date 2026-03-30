@@ -1,0 +1,369 @@
+openapi: 3.0.3
+info:
+  title: Payment Confirmation Service API
+  description: |
+    Provides payment confirmation retrieval, printable receipt generation, and confirmation resend capabilities
+    for customer service and customer self-service. Supports multiple delivery channels including email,
+    SMS, and downloadable PDF receipts.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: http://localhost:3000
+    description: Docker containerized server
+  - url: https://dev-api.example.com
+    description: Development environment
+  - url: https://staging-api.example.com
+    description: Staging environment
+  - url: https://api.example.com
+    description: Production environment
+
+tags:
+  - name: Payments
+    description: Payment confirmation operations
+  - name: Health
+    description: Service health check endpoints
+
+paths:
+  /api/v1/payments/{confirmationNumber}:
+    get:
+      tags:
+        - Payments
+      summary: Retrieve payment confirmation
+      description: |
+        Retrieves payment confirmation details by confirmation number.
+        Validates user access and returns complete payment information including balances.
+      operationId: getPaymentConfirmation
+      parameters:
+        - name: confirmationNumber
+          in: path
+          description: Payment confirmation number (format: PAY-YYYYMMDD-XXXXXX)
+          required: true
+          schema:
+            type: string
+            pattern: '^PAY-\d{8}-[A-Z0-9]+$'
+            example: PAY-20240115-ABC123
+        - name: x-trace-id
+          in: header
+          description: Trace ID for request tracking
+          required: false
+          schema:
+            type: string
+            format: uuid
+            example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: Payment confirmation retrieved successfully
+          headers:
+            x-trace-id:
+              description: Trace ID for request tracking
+              schema:
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentConfirmation'
+              examples:
+                eftPayment:
+                  summary: EFT payment example
+                  value:
+                    paymentConfirmationNumber: PAY-20240115-ABC123
+                    transactionId: "1234567890123456"
+                    accountId: "12345678901"
+                    paymentAmount: 2450.75
+                    paymentMethod: eft
+                    previousBalance: 2450.75
+                    newBalance: 0.00
+                    paymentDate: "2024-01-15"
+                    status: posted
+                creditCardPayment:
+                  summary: Credit card payment example
+                  value:
+                    paymentConfirmationNumber: PAY-20240116-XYZ789
+                    transactionId: "9876543210987654"
+                    accountId: "98765432109"
+                    paymentAmount: 1250.50
+                    paymentMethod: credit_card
+                    previousBalance: 1250.50
+                    newBalance: 0.00
+                    paymentDate: "2024-01-16"
+                    status: posted
+        '400':
+          description: Invalid confirmation number format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: VALIDATION_ERROR
+                message: Invalid confirmation number format
+                timestamp: "2024-01-15T10:30:00Z"
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+        '403':
+          description: Forbidden - User cannot access this payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: FORBIDDEN
+                message: Forbidden - cannot access this payment
+                timestamp: "2024-01-15T10:30:00Z"
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+        '404':
+          description: Payment confirmation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: PAYMENT_NOT_FOUND
+                message: Payment confirmation not found
+                timestamp: "2024-01-15T10:30:00Z"
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: INTERNAL_SERVER_ERROR
+                message: An unexpected error occurred
+                timestamp: "2024-01-15T10:30:00Z"
+                traceId: 550e8400-e29b-41d4-a716-446655440000
+
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: Checks if the application is running (does not check dependencies)
+      operationId: healthLive
+      responses:
+        '200':
+          description: Application is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: UP
+                timestamp: "2024-01-15T10:30:00Z"
+
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe
+      description: Checks if the application is ready to serve traffic (includes database check)
+      operationId: healthReady
+      responses:
+        '200':
+          description: Application is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponseWithDatabase'
+              example:
+                status: UP
+                database: UP
+                timestamp: "2024-01-15T10:30:00Z"
+        '503':
+          description: Application is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponseWithDatabase'
+              example:
+                status: DOWN
+                database: DOWN
+                timestamp: "2024-01-15T10:30:00Z"
+
+  /v1/payment-confirmation/health:
+    get:
+      tags:
+        - Health
+      summary: Service-specific health check
+      description: Returns detailed health information for the payment confirmation service
+      operationId: healthV1
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponseV1'
+              example:
+                status: UP
+                service: payment-confirmation
+                version: 1.0.0
+                database: UP
+                timestamp: "2024-01-15T10:30:00Z"
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponseV1'
+              example:
+                status: DOWN
+                service: payment-confirmation
+                version: 1.0.0
+                database: DOWN
+                timestamp: "2024-01-15T10:30:00Z"
+
+components:
+  schemas:
+    PaymentConfirmation:
+      type: object
+      required:
+        - paymentConfirmationNumber
+        - transactionId
+        - accountId
+        - paymentAmount
+        - paymentMethod
+        - previousBalance
+        - newBalance
+        - paymentDate
+        - status
+      properties:
+        paymentConfirmationNumber:
+          type: string
+          description: Unique payment confirmation number
+          pattern: '^PAY-\d{8}-[A-Z0-9]+$'
+          example: PAY-20240115-ABC123
+        transactionId:
+          type: string
+          description: Transaction identifier (16 digits)
+          pattern: '^\d{16}$'
+          minLength: 16
+          maxLength: 16
+          example: "1234567890123456"
+        accountId:
+          type: string
+          description: Account identifier (11 digits)
+          pattern: '^\d{11}$'
+          minLength: 11
+          maxLength: 11
+          example: "12345678901"
+        paymentAmount:
+          type: number
+          format: double
+          description: Payment amount in currency
+          minimum: 0
+          example: 2450.75
+        paymentMethod:
+          type: string
+          description: Payment method used
+          enum:
+            - eft
+            - credit_card
+            - debit_card
+          example: eft
+        previousBalance:
+          type: number
+          format: double
+          description: Account balance before payment
+          example: 2450.75
+        newBalance:
+          type: number
+          format: double
+          description: Account balance after payment
+          example: 0.00
+        paymentDate:
+          type: string
+          format: date
+          description: Date when payment was made (ISO 8601 date)
+          example: "2024-01-15"
+        status:
+          type: string
+          description: Current status of the payment
+          enum:
+            - posted
+            - pending
+            - failed
+          example: posted
+
+    ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - message
+        - timestamp
+        - traceId
+      properties:
+        errorCode:
+          type: string
+          description: Machine-readable error code
+          example: PAYMENT_NOT_FOUND
+        message:
+          type: string
+          description: Human-readable error message
+          example: Payment confirmation not found
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp when error occurred (ISO 8601)
+          example: "2024-01-15T10:30:00Z"
+        traceId:
+          type: string
+          format: uuid
+          description: Trace ID for request tracking
+          example: 550e8400-e29b-41d4-a716-446655440000
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum:
+            - UP
+            - DOWN
+          description: Overall health status
+          example: UP
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of health check (ISO 8601)
+          example: "2024-01-15T10:30:00Z"
+
+    HealthResponseWithDatabase:
+      allOf:
+        - $ref: '#/components/schemas/HealthResponse'
+        - type: object
+          required:
+            - database
+          properties:
+            database:
+              type: string
+              enum:
+                - UP
+                - DOWN
+              description: Database connection status
+              example: UP
+
+    HealthResponseV1:
+      allOf:
+        - $ref: '#/components/schemas/HealthResponseWithDatabase'
+        - type: object
+          required:
+            - service
+            - version
+          properties:
+            service:
+              type: string
+              description: Service name
+              example: payment-confirmation
+            version:
+              type: string
+              description: Service version
+              example: 1.0.0

@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: customer-verification-service
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-customer_verification}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_POOL_MIN: ${DB_POOL_MIN:-2}
+      DB_POOL_MAX: ${DB_POOL_MAX:-10}
+      CREDIT_BUREAU_API_URL: ${CREDIT_BUREAU_API_URL}
+      CREDIT_BUREAU_API_KEY: ${CREDIT_BUREAU_API_KEY}
+      GOVERNMENT_ID_API_URL: ${GOVERNMENT_ID_API_URL}
+      GOVERNMENT_ID_API_KEY: ${GOVERNMENT_ID_API_KEY}
+      FRAUD_DETECTION_API_URL: ${FRAUD_DETECTION_API_URL}
+      FRAUD_DETECTION_API_KEY: ${FRAUD_DETECTION_API_KEY}
+      ADDRESS_VERIFICATION_API_URL: ${ADDRESS_VERIFICATION_API_URL}
+      ADDRESS_VERIFICATION_API_KEY: ${ADDRESS_VERIFICATION_API_KEY}
+      MAX_RETRY_ATTEMPTS: ${MAX_RETRY_ATTEMPTS:-3}
+      RETRY_DELAY_MS: ${RETRY_DELAY_MS:-1000}
+      REQUEST_TIMEOUT_MS: ${REQUEST_TIMEOUT_MS:-5000}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ISSUER: ${JWT_ISSUER:-customer-verification-service}
+      FRAUD_RISK_HIGH_THRESHOLD: ${FRAUD_RISK_HIGH_THRESHOLD:-70}
+      FICO_SCORE_MIN_THRESHOLD: ${FICO_SCORE_MIN_THRESHOLD:-550}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - verification-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health/live', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: customer-verification-db
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${DB_NAME:-customer_verification}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - verification-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+    driver: local
+
+networks:
+  verification-network:
+    driver: bridge

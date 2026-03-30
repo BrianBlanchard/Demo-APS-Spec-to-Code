@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: card-issuance-service
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: card_issuance_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_POOL_MIN: 2
+      DB_POOL_MAX: 10
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-dGhpcyBpcyBhIDI1NiBiaXQga2V5IGZvciBhZXMtMjU2LWdjbQ==}
+      ENCRYPTION_ALGORITHM: aes-256-gcm
+      JWT_SECRET: ${JWT_SECRET:-default-jwt-secret-change-in-production}
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX_REQUESTS: 20
+      LOG_LEVEL: info
+      LOG_PRETTY_PRINT: "false"
+      CORS_ORIGIN: "*"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - card-issuance-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health/live', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: card-issuance-db
+    environment:
+      POSTGRES_DB: card_issuance_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    networks:
+      - card-issuance-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  card-issuance-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+    driver: local

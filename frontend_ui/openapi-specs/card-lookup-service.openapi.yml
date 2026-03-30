@@ -1,0 +1,514 @@
+# OpenAPI spec for service card-lookup-service
+openapi: 3.0.3
+info:
+  title: Card Lookup Service API
+  description: |
+    Secure card information retrieval service with role-based masking.
+    Provides fast card information retrieval with automatic masking of sensitive data based on user roles.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: http://localhost:3000
+    description: Docker containerized server
+  - url: https://dev-api.example.com
+    description: Development environment
+  - url: https://staging-api.example.com
+    description: Staging environment
+  - url: https://api.example.com
+    description: Production environment
+
+tags:
+  - name: Cards
+    description: Card lookup operations
+  - name: Health
+    description: Health check endpoints
+
+paths:
+  /api/v1/cards/{cardNumber}:
+    get:
+      tags:
+        - Cards
+      summary: Retrieve card information
+      description: |
+        Retrieves card information with automatic masking based on user role.
+        - Customer: Last 4 digits visible (************1234)
+        - CSR: Last 6 digits visible (**********781234)
+        - Admin: Full card number visible (with audit log)
+      operationId: getCard
+      parameters:
+        - name: cardNumber
+          in: path
+          required: true
+          description: Card number (16 digits or masked format)
+          schema:
+            type: string
+            pattern: '^\d{4,16}$|^\*+\d{4,6}$'
+            example: '4532123456781234'
+        - name: includeAccount
+          in: query
+          required: false
+          description: Include associated account details
+          schema:
+            type: boolean
+            default: false
+        - name: includeCustomer
+          in: query
+          required: false
+          description: Include customer details
+          schema:
+            type: boolean
+            default: false
+        - name: includeTransactions
+          in: query
+          required: false
+          description: Include recent transactions
+          schema:
+            type: boolean
+            default: false
+        - name: Authorization
+          in: header
+          required: true
+          description: Bearer JWT token
+          schema:
+            type: string
+            example: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+        - name: x-trace-id
+          in: header
+          required: false
+          description: Trace ID for request tracking
+          schema:
+            type: string
+            format: uuid
+        - name: x-user-id
+          in: header
+          required: true
+          description: User ID making the request
+          schema:
+            type: string
+            example: '123456789'
+        - name: x-user-role
+          in: header
+          required: true
+          description: User role (customer, csr, admin)
+          schema:
+            type: string
+            enum: [customer, csr, admin]
+            example: 'customer'
+      responses:
+        '200':
+          description: Card information retrieved successfully
+          headers:
+            x-trace-id:
+              description: Trace ID for request tracking
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardResponse'
+              examples:
+                customerView:
+                  summary: Customer view (last 4 digits)
+                  value:
+                    cardNumber: '************1234'
+                    accountId: '12345678901'
+                    customerId: '123456789'
+                    embossedName: 'JOHN M ANDERSON'
+                    status: 'active'
+                    expirationDate: '01/27'
+                    issuedDate: '2024-01-15'
+                csrView:
+                  summary: CSR view (last 6 digits)
+                  value:
+                    cardNumber: '**********781234'
+                    accountId: '12345678901'
+                    customerId: '123456789'
+                    embossedName: 'JOHN M ANDERSON'
+                    status: 'active'
+                    expirationDate: '01/27'
+                    issuedDate: '2024-01-15'
+                adminView:
+                  summary: Admin view (full card number)
+                  value:
+                    cardNumber: '4532123456781234'
+                    accountId: '12345678901'
+                    customerId: '123456789'
+                    embossedName: 'JOHN M ANDERSON'
+                    status: 'active'
+                    expirationDate: '01/27'
+                    issuedDate: '2024-01-15'
+                withAllDetails:
+                  summary: With account, customer, and transactions
+                  value:
+                    cardNumber: '************1234'
+                    accountId: '12345678901'
+                    customerId: '123456789'
+                    embossedName: 'JOHN M ANDERSON'
+                    status: 'active'
+                    expirationDate: '01/27'
+                    issuedDate: '2024-01-15'
+                    account:
+                      accountId: '12345678901'
+                      status: 'active'
+                      currentBalance: 2450.75
+                      creditLimit: 5000.00
+                      availableCredit: 2549.25
+                    customer:
+                      customerId: '123456789'
+                      firstName: 'John'
+                      lastName: 'Anderson'
+                    recentTransactions:
+                      - transactionId: '1234567890123456'
+                        date: '2024-01-15'
+                        description: 'AMAZON.COM'
+                        amount: 125.50
+                      - transactionId: '1234567890123457'
+                        date: '2024-01-14'
+                        description: 'STARBUCKS'
+                        amount: 5.75
+        '400':
+          description: Invalid card number format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: 'VALIDATION_ERROR'
+                message: 'Invalid card number format'
+                timestamp: '2024-01-15T10:30:00.000Z'
+                traceId: '550e8400-e29b-41d4-a716-446655440000'
+        '401':
+          description: Unauthorized - missing or invalid JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: 'UNAUTHORIZED'
+                message: 'Missing or invalid authorization header'
+                timestamp: '2024-01-15T10:30:00.000Z'
+                traceId: '550e8400-e29b-41d4-a716-446655440000'
+        '403':
+          description: Forbidden - cannot access this card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: 'ACCESS_FORBIDDEN'
+                message: 'Access forbidden'
+                timestamp: '2024-01-15T10:30:00.000Z'
+                traceId: '550e8400-e29b-41d4-a716-446655440000'
+        '404':
+          description: Card not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: 'RESOURCE_NOT_FOUND'
+                message: 'Card not found'
+                timestamp: '2024-01-15T10:30:00.000Z'
+                traceId: '550e8400-e29b-41d4-a716-446655440000'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                errorCode: 'INTERNAL_SERVER_ERROR'
+                message: 'An unexpected error occurred'
+                timestamp: '2024-01-15T10:30:00.000Z'
+                traceId: '550e8400-e29b-41d4-a716-446655440000'
+      security:
+        - bearerAuth: []
+
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Basic health check
+      description: Returns basic service health status
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: 'UP'
+                timestamp: '2024-01-15T10:30:00.000Z'
+                service: 'card-lookup-service'
+
+  /health/ready:
+    get:
+      tags:
+        - Health
+      summary: Readiness check
+      description: Returns readiness status including database and cache connectivity
+      operationId: readinessCheck
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: 'READY'
+                timestamp: '2024-01-15T10:30:00.000Z'
+                checks:
+                  database: 'UP'
+                  cache: 'UP'
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              example:
+                status: 'NOT_READY'
+                timestamp: '2024-01-15T10:30:00.000Z'
+                error: 'Database connection failed'
+
+  /health/live:
+    get:
+      tags:
+        - Health
+      summary: Liveness check
+      description: Returns liveness status for Kubernetes probes
+      operationId: livenessCheck
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LivenessResponse'
+              example:
+                status: 'ALIVE'
+                timestamp: '2024-01-15T10:30:00.000Z'
+
+components:
+  schemas:
+    CardResponse:
+      type: object
+      required:
+        - cardNumber
+        - accountId
+        - customerId
+        - embossedName
+        - status
+        - expirationDate
+        - issuedDate
+      properties:
+        cardNumber:
+          type: string
+          description: Masked card number based on user role
+          example: '************1234'
+        accountId:
+          type: string
+          description: Associated account ID
+          example: '12345678901'
+        customerId:
+          type: string
+          description: Customer ID
+          example: '123456789'
+        embossedName:
+          type: string
+          description: Name embossed on the card
+          example: 'JOHN M ANDERSON'
+        status:
+          type: string
+          enum: [active, inactive, blocked, expired]
+          description: Card status
+          example: 'active'
+        expirationDate:
+          type: string
+          pattern: '^\d{2}/\d{2}$'
+          description: Card expiration date (MM/YY)
+          example: '01/27'
+        issuedDate:
+          type: string
+          format: date
+          description: Card issue date (YYYY-MM-DD)
+          example: '2024-01-15'
+        account:
+          $ref: '#/components/schemas/AccountResponse'
+        customer:
+          $ref: '#/components/schemas/CustomerResponse'
+        recentTransactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionResponse'
+
+    AccountResponse:
+      type: object
+      required:
+        - accountId
+        - status
+        - currentBalance
+        - creditLimit
+        - availableCredit
+      properties:
+        accountId:
+          type: string
+          example: '12345678901'
+        status:
+          type: string
+          example: 'active'
+        currentBalance:
+          type: number
+          format: double
+          example: 2450.75
+        creditLimit:
+          type: number
+          format: double
+          example: 5000.00
+        availableCredit:
+          type: number
+          format: double
+          example: 2549.25
+
+    CustomerResponse:
+      type: object
+      required:
+        - customerId
+        - firstName
+        - lastName
+      properties:
+        customerId:
+          type: string
+          example: '123456789'
+        firstName:
+          type: string
+          example: 'John'
+        lastName:
+          type: string
+          example: 'Anderson'
+
+    TransactionResponse:
+      type: object
+      required:
+        - transactionId
+        - date
+        - description
+        - amount
+      properties:
+        transactionId:
+          type: string
+          example: '1234567890123456'
+        date:
+          type: string
+          format: date
+          example: '2024-01-15'
+        description:
+          type: string
+          example: 'AMAZON.COM'
+        amount:
+          type: number
+          format: double
+          example: 125.50
+
+    ErrorResponse:
+      type: object
+      required:
+        - errorCode
+        - message
+        - timestamp
+        - traceId
+      properties:
+        errorCode:
+          type: string
+          description: Application-specific error code
+          example: 'RESOURCE_NOT_FOUND'
+        message:
+          type: string
+          description: Human-readable error message
+          example: 'Card not found'
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp
+          example: '2024-01-15T10:30:00.000Z'
+        traceId:
+          type: string
+          description: Trace ID for debugging
+          example: '550e8400-e29b-41d4-a716-446655440000'
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - service
+      properties:
+        status:
+          type: string
+          example: 'UP'
+        timestamp:
+          type: string
+          format: date-time
+          example: '2024-01-15T10:30:00.000Z'
+        service:
+          type: string
+          example: 'card-lookup-service'
+
+    ReadinessResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: [READY, NOT_READY]
+          example: 'READY'
+        timestamp:
+          type: string
+          format: date-time
+          example: '2024-01-15T10:30:00.000Z'
+        checks:
+          type: object
+          properties:
+            database:
+              type: string
+              example: 'UP'
+            cache:
+              type: string
+              example: 'UP'
+        error:
+          type: string
+          example: 'Database connection failed'
+
+    LivenessResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          example: 'ALIVE'
+        timestamp:
+          type: string
+          format: date-time
+          example: '2024-01-15T10:30:00.000Z'
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for authentication
+
+security:
+  - bearerAuth: []
