@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Button } from '@/components/button';
-import { Card } from '@/components/card';
+import { Button } from '../../components/button';
+import { Card } from '../../components/card';
 
 export default function DashboardView() {
   const { user, isAuthenticated, logout } = useAuth();

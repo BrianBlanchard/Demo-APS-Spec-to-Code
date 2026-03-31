@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import type { AxiosInstance, AxiosRequestConfig } from 'axios';
-import type { ApiError } from '@/types/api';
+import type { ApiError } from '../types/api';
 
 // API base URL - should match backend server
 const API_BASE_URL = 'http://localhost:8000';

@@ -1,6 +1,6 @@
 import apiClient from './api';
-import type { Transaction } from '@/types/account';
-import type { PaginatedResponse } from '@/types/api';
+import type { Transaction } from '../types/account';
+import type { PaginatedResponse } from '../types/api';
 
 export interface TransactionSearchParams {
   accountNumber?: string;

@@ -2,9 +2,9 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Button } from '@/components/button';
-import { Input } from '@/components/input';
-import { Alert } from '@/components/alert';
+import { Button } from '../../components/button';
+import { Input } from '../../components/input';
+import { Alert } from '../../components/alert';
 
 export default function LoginView() {
   const [userId, setUserId] = useState('');
@@ -13,6 +13,10 @@ export default function LoginView() {
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const DEMO_CREDENTIALS = [
+    { userId: 'DEMO0001', password: 'password123', role: 'admin' },
+    { userId: 'DEMO0002', password: 'password123', role: 'user' },
+  ];
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -32,6 +36,25 @@ export default function LoginView() {
     setIsLoading(true);
 
     try {
+      // 🔹 DEMO LOGIN LOGIC
+      const demoUser = DEMO_CREDENTIALS.find(
+        (u) => u.userId === userId && u.password === password
+      );
+
+      if (demoUser) {
+        // Simulate network delay
+        await new Promise((res) => setTimeout(res, 800));
+
+        // Option 1: Use your existing auth context if it supports setting user directly
+        await login(userId, password);
+
+        // Option 2 (fallback): manually redirect for demo
+        navigate('/dashboard');
+
+        return;
+      }
+
+    // 🔹 FALL BACK TO REAL AUTH (if needed)
       await login(userId, password);
       // Navigation handled by AuthContext
     } catch (error: any) {

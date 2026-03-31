@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Button } from '@/components/button';
-import { Card } from '@/components/card';
+import { Button } from '../../components/button';
+import { Card } from '../../components/card';
 
 export default function AccountDetailView() {
   const { accountNumber } = useParams<{ accountNumber: string }>();

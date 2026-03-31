@@ -1,11 +1,12 @@
 {
   "compilerOptions": {
-    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "tsBuildInfoFile": "./frontend_ui/frontend_ui/node_modules/.tmp/tsconfig.node.tsbuildinfo",
     "target": "ES2023",
     "lib": ["ES2023"],
     "module": "ESNext",
     "types": ["node"],
-    "skipLibCheck": true,
+    "skipLibCheck": false,
+    "sourceMap": true,
 
     /* Bundler mode */
     "moduleResolution": "bundler",

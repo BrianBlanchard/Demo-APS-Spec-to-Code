@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Button } from '@/components/button';
-import { Input } from '@/components/input';
-import { Card } from '@/components/card';
-import { Alert } from '@/components/alert';
+import { Button } from '../../components/button';
+import { Input } from '../../components/input';
+import { Card } from '../../components/card';
+import { Alert } from '../../components/alert';
 
 interface AccountData {
   accountId: string;

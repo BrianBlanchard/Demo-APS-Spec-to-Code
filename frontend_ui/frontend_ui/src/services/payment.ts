@@ -1,5 +1,5 @@
 import apiClient from './api';
-import type { Payment, PaymentConfirmation } from '@/types/payment';
+import type { Payment, PaymentConfirmation } from '../types/payment';
 
 // Payment service
 export const paymentService = {

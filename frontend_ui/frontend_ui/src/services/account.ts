@@ -1,6 +1,6 @@
 import apiClient from './api';
-import type { Account, AccountDetail, AccountSearchParams } from '@/types/account';
-import type { PaginatedResponse } from '@/types/api';
+import type { Account, AccountDetail, AccountSearchParams } from '../types/account';
+import type { PaginatedResponse } from '../types/api';
 
 // Account service
 export const accountService = {

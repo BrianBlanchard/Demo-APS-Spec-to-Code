@@ -1,8 +1,39 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { User, AuthState } from '@/types/auth';
-import { authService } from '@/services/auth';
+import type { User, AuthState } from '../types/auth';
+import { authService } from '../services/auth';
+
+const DEMO_USERS = [
+  {
+    userId: 'DEMO0001',
+    password: 'password123',
+    user: {
+      userId: 'DEMO0001',
+      name: 'Demo Admin',
+      role: 'admin',
+      firstName: 'Demo',
+      lastName: 'Admin',
+      userType: 'ADMIN',
+      permissions: ['ALL'],
+    },
+    landingPage: '/dashboard',
+  },
+  {
+    userId: 'DEMO0002',
+    password: 'password123',
+    user: {
+      userId: 'DEMO0002',
+      name: 'Demo User',
+      role: 'user',
+      firstName: 'Demo',
+      lastName: 'User',
+      userType: 'CUSTOMER',
+      permissions: ['READ_ONLY'],
+    },
+    landingPage: '/dashboard',
+  },
+];
 
 interface AuthContextType extends AuthState {
   login: (userId: string, password: string) => Promise<void>;
@@ -21,25 +52,53 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   });
   const navigate = useNavigate();
 
-  // Initialize auth state from storage
-  useEffect(() => {
-    const token = authService.getSessionToken();
-    const user = authService.getCurrentUser();
+  // Initialize auth state from storage with local storage backdoor for demo user (manually added the backdoor - this wasn't created by AI/works)
+ useEffect(() => {
+  const token =
+    localStorage.getItem('sessionToken') || authService.getSessionToken();
 
-    if (token && user) {
-      setState({
-        user,
-        sessionToken: token,
-        isAuthenticated: true,
-        isLoading: false,
-      });
-    } else {
-      setState((prev: AuthState) => ({ ...prev, isLoading: false }));
-    }
-  }, []);
+  const user =
+    JSON.parse(localStorage.getItem('user') || 'null') ||
+    authService.getCurrentUser();
+
+  if (token && user) {
+    setState({
+      user,
+      sessionToken: token,
+      isAuthenticated: true,
+      isLoading: false,
+    });
+  } else {
+    setState((prev: AuthState) => ({ ...prev, isLoading: false }));
+  }
+}, []);
 
   const login = async (userId: string, password: string) => {
     try {
+          // 🔹 DEMO LOGIN SHORT-CIRCUIT for demo user (manually added the backdoor - this wasn't created by AI/works)
+          const demoUser = DEMO_USERS.find(
+            (u) => u.userId === userId && u.password === password
+          );
+
+          if (demoUser) {
+            await new Promise((res) => setTimeout(res, 800));
+
+            const fakeToken = 'demo-token';
+
+            localStorage.setItem('sessionToken', fakeToken);
+            localStorage.setItem('user', JSON.stringify(demoUser.user));
+
+            setState({
+              user: demoUser.user,
+              sessionToken: fakeToken,
+              isAuthenticated: true,
+              isLoading: false,
+            });
+
+            navigate(demoUser.landingPage);
+            return;
+          }
+          // 🔹 FALLBACK (keeps existing behavior if ever needed)
       const response = await authService.login(userId, password);
 
       setState({
@@ -61,6 +120,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       await authService.logout();
     } finally {
+      
+      //Logout local storage for demo user backdoor - Manually added - Not created by AI/works
+      localStorage.removeItem('sessionToken');
+      localStorage.removeItem('user');
+      
       setState({
         user: null,
         sessionToken: null,

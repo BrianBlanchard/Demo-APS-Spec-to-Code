@@ -5,7 +5,7 @@ import type {
   PasswordResetRequest,
   PasswordResetResponse,
   NewPasswordRequest,
-} from '@/types/auth';
+} from '../types/auth';
 
 // Authentication service
 export const authService = {

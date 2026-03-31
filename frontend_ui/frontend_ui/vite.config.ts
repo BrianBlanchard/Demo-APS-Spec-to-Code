@@ -18,13 +18,13 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@/components': path.resolve(__dirname, './src/components'),
-      '@/types': path.resolve(__dirname, './src/types'),
-      '@/services': path.resolve(__dirname, './src/services'),
-      '@/utils': path.resolve(__dirname, './src/utils'),
-      '@/views': path.resolve(__dirname, './src/views'),
-      '@/hooks': path.resolve(__dirname, './src/hooks'),
-      '@/constants': path.resolve(__dirname, './src/constants'),
+      '@/components': path.resolve(__dirname, './frontend_ui/frontend_ui/src/components'),
+      '@/types': path.resolve(__dirname, './frontend_ui/frontend_ui/src/types'),
+      '@/services': path.resolve(__dirname, './frontend_ui/frontend_ui/src/services'),
+      '@/utils': path.resolve(__dirname, './frontend_ui/frontend_ui/src/utils'),
+      '@/views': path.resolve(__dirname, './frontend_ui/frontend_ui/src/views'),
+      '@/hooks': path.resolve(__dirname, './frontend_ui/frontend_ui/src/hooks'),
+      '@/constants': path.resolve(__dirname, './frontend_ui/src/constants'),
     }
   }
 })

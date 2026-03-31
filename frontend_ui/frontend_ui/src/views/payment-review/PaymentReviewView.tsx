@@ -2,9 +2,9 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Button } from '@/components/button';
-import { Card } from '@/components/card';
-import { Alert } from '@/components/alert';
+import { Button } from '../../components/button';
+import { Card } from '../../components/card';
+import { Alert } from '../../components/alert';
 
 interface PaymentDetails {
   accountId: string;
